@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Заметки</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <section id="auth" class="auth" hidden>
+    <div class="auth-card">
+      <div class="brand auth-brand">
+        <span class="logo">✎</span>
+        <h1>Заметки</h1>
+      </div>
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="auth-tab active" data-mode="login" role="tab">Вход</button>
+        <button type="button" class="auth-tab" data-mode="register" role="tab">Регистрация</button>
+      </div>
+      <form id="auth-form" novalidate>
+        <label class="field">
+          <span>Логин</span>
+          <input id="auth-username" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required maxlength="30">
+        </label>
+        <label class="field">
+          <span>Пароль</span>
+          <input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="128">
+        </label>
+        <p id="auth-error" class="auth-error" role="alert" hidden></p>
+        <button type="submit" id="auth-submit" class="btn primary wide">Войти</button>
+      </form>
+    </div>
+  </section>
+
+  <div id="app" hidden>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">✎</span>
+      <h1>Заметки</h1>
+    </div>
+    <div class="search">
+      <input id="search" type="search" placeholder="Поиск по заметкам…" autocomplete="off">
+    </div>
+    <div class="actions">
+      <div class="design-picker">
+        <button id="design-btn" class="icon-btn" title="Дизайн" aria-label="Выбрать дизайн" aria-haspopup="true" aria-expanded="false">🎨</button>
+        <div id="design-menu" class="design-menu" role="menu" hidden></div>
+      </div>
+      <button id="theme-toggle" class="icon-btn" title="Сменить тему" aria-label="Сменить тему">◐</button>
+      <button id="new-note" class="btn primary">+ Новая заметка</button>
+      <div class="user">
+        <span id="user-name" class="user-name"></span>
+        <button id="logout" class="btn" title="Выйти">Выйти</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <nav>
+        <button class="filter active" data-filter="all">Все заметки <span id="count-all" class="badge">0</span></button>
+        <button class="filter" data-filter="pinned">Закреплённые <span id="count-pinned" class="badge">0</span></button>
+        <button class="filter" data-filter="archived">Архив <span id="count-archived" class="badge">0</span></button>
+      </nav>
+      <h2 class="sidebar-title">Теги</h2>
+      <div id="tag-list" class="tag-list"></div>
+      <h2 class="sidebar-title">Сортировка</h2>
+      <select id="sort">
+        <option value="updated">По изменению</option>
+        <option value="created">По созданию</option>
+        <option value="title">По названию</option>
+      </select>
+    </aside>
+
+    <main>
+      <section id="pinned-section" class="notes-section" hidden>
+        <h2 class="section-title">Закреплённые</h2>
+        <div id="pinned-grid" class="grid"></div>
+      </section>
+      <section class="notes-section">
+        <h2 id="main-title" class="section-title" hidden>Остальные</h2>
+        <div id="notes-grid" class="grid"></div>
+      </section>
+      <div id="empty" class="empty" hidden>
+        <div class="empty-icon">🗒️</div>
+        <p id="empty-text">Здесь пока пусто</p>
+        <button class="btn primary" id="empty-new">Создать заметку</button>
+      </div>
+    </main>
+  </div>
+  </div>
+
+  <dialog id="editor">
+    <form id="editor-form" method="dialog">
+      <input id="note-title" class="title-input" placeholder="Заголовок" maxlength="120">
+      <textarea id="note-body" class="body-input" placeholder="Текст заметки…" rows="10" maxlength="20000"></textarea>
+      <input id="note-tags" class="tags-input" placeholder="Теги через запятую: работа, идеи">
+      <div class="colors" id="colors" role="radiogroup" aria-label="Цвет заметки"></div>
+      <div class="editor-footer">
+        <div class="left">
+          <button type="button" id="pin-btn" class="icon-btn" title="Закрепить">📌</button>
+          <button type="button" id="archive-btn" class="icon-btn" title="В архив">🗄️</button>
+          <button type="button" id="delete-btn" class="icon-btn danger" title="Удалить">🗑️</button>
+        </div>
+        <span id="meta" class="meta"></span>
+        <div class="right">
+          <button type="button" id="cancel-btn" class="btn">Отмена</button>
+          <button type="submit" class="btn primary">Сохранить</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

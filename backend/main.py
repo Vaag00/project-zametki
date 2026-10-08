@@ -95,6 +95,9 @@ class NoteIn(BaseModel):
                 seen.append(t)
         return seen
 
+class NotePatch(NoteIn):
+    pass
+
 # ---------- Вспомогательное ----------
 
 def user_out(row: sqlite3.Row) -> dict:

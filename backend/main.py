@@ -132,15 +132,23 @@ def start_session(db: sqlite3.Connection, response: Response, user_id: int) -> N
     )
 
 
-def current_user(request: Request, db: sqlite3.Connection = Depends(get_db)) -> sqlite3.Row:
+def current_user(request: Request, response: Response,db: sqlite3.Connection = Depends(get_db)) -> sqlite3.Row:
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         row = db.execute(
-            """SELECT u.*, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id
+            """SELECT u.*, s.expires_at
+               FROM sessions s JOIN users u ON u.id = s.user_id
                WHERE s.token_hash = ?""",
             (security.hash_token(token),),
         ).fetchone()
         if row and row["expires_at"] > datetime.now(timezone.utc).isoformat():
+            new_expires = datetime.now(timedelta.utc) + SESSION_TTL
+            db.execute("UPDATE sessions SET expires_at = ? WHERE token_hash = ?", 
+                       (new_expires.isocalendar(), row["token_hash"]))
+            response.set_cookie(SESSION_COOKIE, token,
+                                max_age=int(SESSION_TTL.total_seconds()),
+                                httponly=True, samesite="lax",
+                                secure=COOKIE_SECURE, path="/")
             return row
     raise HTTPException(401, "Требуется вход")
 

@@ -212,6 +212,14 @@ def logout(request: Request, response: Response, db: sqlite3.Connection = Depend
 def me(user: sqlite3.Row = Depends(current_user)):
     return user_out(user)
 
+@app.middleware("http")
+async def security_headers(request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "same-origin"
+    return resp
+
 # ---------- Заметки ----------
 
 @app.get("/api/notes")

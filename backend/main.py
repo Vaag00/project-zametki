@@ -220,6 +220,21 @@ async def security_headers(request, call_next):
     resp.headers["Referrer-Policy"] = "same-origin"
     return resp
 
+# ---------- Востоновление пороля ----------
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=8, max_length=28)
+
+@app.post("/api/auth/password")
+def change_password(data: PasswordChange, user=Depends(current_user),
+                    db: sqlite3.Connection = Depends(get_db)):
+    if not security.verify_password(data.old_password, user["password_hash"]):
+        raise HTTPException(400, "Неверынй текущий пароль")
+    db.execute("UPDATE user SET password_hash = ? WHERE id =?",
+               (security.hash_password(data.new_password), user["id"]))
+    db.execute("DELETE FROM session WHERE user_id = ?", (user["id"],))
+
 # ---------- Заметки ----------
 
 @app.get("/api/notes")

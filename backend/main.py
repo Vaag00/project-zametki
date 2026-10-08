@@ -48,7 +48,6 @@ async def validation_error(_request: Request, exc: RequestValidationError):
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
-
 # ---------- Схемы ----------
 
 class RegisterIn(BaseModel):
@@ -95,12 +94,6 @@ class NoteIn(BaseModel):
             if t and t not in seen:
                 seen.append(t)
         return seen
-
-
-class NotePatch(NoteIn):
-    # Те же поля и проверки, но в PATCH передаются только изменённые
-    pass
-
 
 # ---------- Вспомогательное ----------
 
@@ -158,7 +151,6 @@ def get_note(db: sqlite3.Connection, user_id: int, note_id: str, deleted: bool =
         raise HTTPException(404, "Заметка не найдена")
     return row
 
-
 # ---------- Авторизация ----------
 
 @app.post("/api/auth/register", status_code=201)
@@ -208,7 +200,6 @@ def logout(request: Request, response: Response, db: sqlite3.Connection = Depend
 @app.get("/api/auth/me")
 def me(user: sqlite3.Row = Depends(current_user)):
     return user_out(user)
-
 
 # ---------- Заметки ----------
 

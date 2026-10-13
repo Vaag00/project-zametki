@@ -10,6 +10,9 @@ const TELEGRAM_PERSONAL = 'https://t.me/vaaaaaag'
 const INSTAGRAM = 'https://instagram.com/vaag.ph'
 const SITE = 'https://vaag-ph.ru'
 
+/** Путь к файлу из /public с учётом base, чтобы сборка работала не только из корня сайта. */
+const asset = (file: string) => `${import.meta.env.BASE_URL}${file}`
+
 const LERP_SCROLL = 0.05
 const LERP_VIDEO = 0.08
 
@@ -37,7 +40,7 @@ const PANELS: Record<1 | 2, Panel> = {
     title: 'Минимальный и Стандартный пакет',
     description:
       'Неспешная прогулка по лесу или берегу залива на рассвете. Туман, влажный воздух, мягкий свет — и ты в нём.',
-    image: '/series1.jpg',
+    image: asset('series1.jpg'),
     packages: [
       { name: 'Минимальный', photos: '50 фото', price: 6500 },
       { name: 'Стандартный', photos: '100 фото', price: 9000 },
@@ -49,7 +52,7 @@ const PANELS: Record<1 | 2, Panel> = {
     title: 'Максимальный пакет',
     description:
       'Длинная съёмка с несколькими образами и локациями. Глубокие тени, вода, драматичный свет — история целиком.',
-    image: '/series2.jpg',
+    image: asset('series2.jpg'),
     packages: [{ name: 'Максимальный', photos: '200 фото + флешка', price: 15000 }],
   },
 }
@@ -230,7 +233,7 @@ export default function App() {
       <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
         <video
           ref={video1Ref}
-          src="/video1.mp4"
+          src={asset('video1.mp4')}
           muted
           playsInline
           preload="auto"
@@ -239,7 +242,7 @@ export default function App() {
         />
         <video
           ref={video2Ref}
-          src="/video2.mp4"
+          src={asset('video2.mp4')}
           muted
           playsInline
           preload="auto"
@@ -276,7 +279,7 @@ export default function App() {
                 }}
                 aria-label="VAAAAAAG — наверх"
               >
-                <img src="/logo.svg" alt="VAAAAAAG" width={48} height={48} className="h-12 w-12" />
+                <img src={asset('logo.svg')} alt="VAAAAAAG" width={48} height={48} className="h-12 w-12" />
               </a>
             </div>
             <div className="mt-5" style={s(0.06, 0.18)}>
@@ -396,7 +399,7 @@ export default function App() {
                   aria-label="Открыть серию «Туман и вода»"
                 >
                   <img
-                    src="/hero.png"
+                    src={asset('hero.png')}
                     alt="Портрет из серии «Туман и вода»"
                     className="h-full w-full object-contain object-bottom"
                   />

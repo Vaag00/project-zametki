@@ -129,9 +129,37 @@ function plural(n: number, one: string, few: string, many: string) {
 
 const formatPrice = (n: number) => `${n.toLocaleString('ru-RU')} ₽`
 
-/** Мгновенный переход к разделу после сцены: плавная прокрутка проматывала бы все панели. */
-function jumpTo(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'instant', block: 'start' })
+/* ---------- Страницы ----------
+ * Главная — без хеша. Портфолио — отдельная страница: #portfolio или #portfolio-<серия>.
+ * Хеш, а не путь: так страница работает на любом хостинге и кнопка «Назад» в браузере тоже. */
+type Route = { page: 'home' } | { page: 'portfolio'; series: string }
+
+function readRoute(): Route {
+  const m = window.location.hash.match(/^#portfolio(?:-([\w-]+))?$/)
+  if (!m) return { page: 'home' }
+  const series = m[1] && SERIES.some((x) => x.id === m[1]) ? m[1] : 'all'
+  return { page: 'portfolio', series }
+}
+
+function openPortfolio(seriesId?: string) {
+  window.location.hash = seriesId ? `portfolio-${seriesId}` : 'portfolio'
+}
+
+function goHome() {
+  window.location.hash = ''
+}
+
+function useRoute() {
+  const [route, setRoute] = useState(readRoute)
+  useEffect(() => {
+    const onHash = () => {
+      setRoute(readRoute())
+      window.scrollTo(0, 0)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  return route
 }
 
 /**
@@ -245,17 +273,21 @@ function InstagramIcon({ className }: { className?: string }) {
 /* ---------- Приложение ---------- */
 
 export default function App() {
+  const route = useRoute()
+  useEffect(() => {
+    document.title = route.page === 'portfolio' ? 'Портфолио — VAAAAAAG' : 'VAAAAAAG — фоткает'
+  }, [route.page])
+  return route.page === 'portfolio' ? (
+    <PortfolioPage key={route.series} initialSeries={route.series} />
+  ) : (
+    <Landing />
+  )
+}
+
+function Landing() {
   const [progress, setProgress] = useState(0)
   const [contactsOpen, setContactsOpen] = useState(false)
   const closeContacts = useCallback(() => setContactsOpen(false), [])
-
-  const [portfolioFilter, setPortfolioFilter] = useState('all')
-  const [lightbox, setLightbox] = useState<{ shots: Shot[]; index: number } | null>(null)
-  const closeLightbox = useCallback(() => setLightbox(null), [])
-  const openSeries = (id: string) => {
-    setPortfolioFilter(id)
-    jumpTo('portfolio')
-  }
 
   // Карточка на первом экране листает серии; на наведении — пауза
   const [heroSeries, setHeroSeries] = useState(0)
@@ -443,7 +475,7 @@ export default function App() {
                       item.target === 'contacts'
                         ? setContactsOpen(true)
                         : item.target === 'portfolio'
-                          ? jumpTo('portfolio')
+                          ? openPortfolio()
                           : scrollToFraction(item.target)
                     }
                     className="group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]"
@@ -574,7 +606,7 @@ export default function App() {
               <div className="mt-3" style={s(0.18, 0.29)}>
                 <button
                   type="button"
-                  onClick={() => openSeries(hero.id)}
+                  onClick={() => openPortfolio(hero.id)}
                   className="hero-card relative block aspect-[4/5] w-full cursor-pointer overflow-hidden rounded-sm border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.01] p-3 transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.04]"
                   aria-label={`Открыть серию «${hero.title}» в портфолио`}
                 >
@@ -764,13 +796,94 @@ export default function App() {
       {/* Длина сцены: прокрутка по ней управляет видео и панелями */}
       <div id="stage" className="h-[650vh]" aria-hidden="true" />
 
-      <PortfolioSection
-        filter={portfolioFilter}
-        onFilter={setPortfolioFilter}
-        onOpen={(shots, index) => setLightbox({ shots, index })}
-      />
-
       <ContactsSection />
+
+      <AnimatePresence>
+        {contactsOpen && <ContactsSection dialog onClose={closeContacts} />}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+/* ---------- Портфолио: отдельная страница ---------- */
+
+function PortfolioPage({ initialSeries }: { initialSeries: string }) {
+  const [filter, setFilter] = useState(initialSeries)
+  const [lightbox, setLightbox] = useState<{ shots: Shot[]; index: number } | null>(null)
+  const closeLightbox = useCallback(() => setLightbox(null), [])
+  const [contactsOpen, setContactsOpen] = useState(false)
+  const closeContacts = useCallback(() => setContactsOpen(false), [])
+
+  const navLink =
+    'group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] transition-colors duration-300'
+  const underline =
+    'absolute -bottom-0.5 left-0 h-px w-full bg-[#E8E6DC] transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]'
+
+  return (
+    <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
+      <header className="flex items-center justify-between gap-6 p-6 md:p-10 lg:p-12">
+        <div className="flex items-center gap-6">
+          <button type="button" onClick={goHome} aria-label="VAAAAAAG — на главную" className="cursor-pointer">
+            <img src={asset('logo.svg')} alt="" width={48} height={48} className="h-12 w-12" />
+          </button>
+          <button
+            type="button"
+            onClick={goHome}
+            className="group hidden cursor-pointer items-center gap-2 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50 sm:flex transition-colors duration-300 hover:text-[#E8E6DC]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-x-1" strokeWidth={1.6} />
+            На главную
+          </button>
+        </div>
+
+        <nav className="flex items-center gap-5 lg:gap-7">
+          <ul className="hidden items-center gap-5 md:flex xl:gap-8">
+            <li>
+              <span className={`${navLink} cursor-default text-[#E8E6DC]`} aria-current="page">
+                Портфолио
+                <span className={`${underline} scale-x-100`} />
+              </span>
+            </li>
+            <li>
+              <button type="button" onClick={() => setContactsOpen(true)} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
+                Обо мне
+                <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
+              </button>
+            </li>
+          </ul>
+          <span className="hidden h-5 w-px bg-white/15 md:block" aria-hidden="true" />
+          <div className="flex items-center gap-4">
+            <a href={INSTAGRAM} target="_blank" rel="noreferrer" aria-label="Instagram @vaag.ph" className="text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]">
+              <InstagramIcon className="h-[18px] w-[18px]" />
+            </a>
+            <a href={TELEGRAM_CHANNEL} target="_blank" rel="noreferrer" aria-label="Telegram-канал t.me/Vaag_ph" className="text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]">
+              <Send className="h-[17px] w-[17px]" strokeWidth={1.6} />
+            </a>
+          </div>
+          <button
+            type="button"
+            onClick={() => setContactsOpen(true)}
+            aria-haspopup="dialog"
+            className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
+          >
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E8E6DC] opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#E8E6DC] transition-colors duration-300 group-hover:bg-[#121212]" />
+            </span>
+            <span className="hidden sm:inline">Записаться</span>
+            <span className="sm:hidden">Запись</span>
+          </button>
+        </nav>
+      </header>
+
+      <main>
+        <PortfolioSection filter={filter} onFilter={setFilter} onOpen={(shots, index) => setLightbox({ shots, index })} />
+      </main>
+
+      <footer className="flex flex-col gap-2 border-t border-white/10 p-6 text-[11px] text-white/35 sm:flex-row sm:justify-between md:px-10 lg:px-12">
+        <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
+        <span>Санкт-Петербург и область</span>
+      </footer>
 
       <AnimatePresence>
         {lightbox && (
@@ -790,8 +903,6 @@ export default function App() {
   )
 }
 
-/* ---------- Портфолио: раздел после сцены ---------- */
-
 function PortfolioSection({
   filter,
   onFilter,
@@ -806,21 +917,17 @@ function PortfolioSection({
   const tabs = [{ id: 'all', title: 'Все' }, ...SERIES]
 
   return (
-    <section
-      id="portfolio"
-      className="relative z-40 min-h-[100svh] border-t border-white/10 bg-[#020202] p-6 md:p-10 lg:p-12"
-      aria-labelledby="portfolio-title"
-    >
+    <section className="px-6 pb-16 pt-6 md:px-10 lg:px-12 lg:pt-10" aria-labelledby="portfolio-title">
       <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Серии</p>
-          <h2
+          <h1
             id="portfolio-title"
             className="mt-5 font-serif uppercase leading-[0.9] text-[#E8E6DC]"
             style={{ fontSize: 'clamp(2.5rem, 5.6vw, 7.5rem)' }}
           >
             Портфолио
-          </h2>
+          </h1>
         </div>
 
         <div className="flex flex-col gap-4 lg:items-end">

@@ -57,6 +57,20 @@ const PANELS: Record<1 | 2, Panel> = {
   },
 }
 
+/** Рассказ о себе — текст автора. Новые абзацы просто добавляются в массив `paragraphs`. */
+const ABOUT = {
+  title: 'Портретный фотограф',
+  titleAccent: 'в Санкт-Петербурге',
+  /** Биография: от прошлого к планам. */
+  bio: [
+    'В 2025 году я начал свой путь в мире фотографии, записавшись на курсы по основам фотосъемки.',
+    'В дальнейшем я планирую продолжить развиваться как фотограф, участвовать в международных выставках и конкурсах.',
+  ],
+  paragraphs: [
+    'Я Вааг — фотограф с опытом в различных жанрах, включая портретную, рекламную и пейзажную фотографию. Мой подход к съемке основан на стремлении запечатлеть настоящие эмоции и уникальность каждого момента, ведь именно они делают фотографии по-настоящему живыми. Я верю в силу рассказа через изображение и стремлюсь создать атмосферу доверия, чтобы помочь своим клиентам раскрыться и почувствовать себя комфортно перед объективом.',
+  ],
+}
+
 const NAV = [
   { label: 'Серии', target: 0.45 },
   { label: 'Услуги', target: 1 },
@@ -455,18 +469,14 @@ export default function App() {
         style={{ visibility: progress > 0.52 && progress < 0.9 ? 'visible' : 'hidden' }}
         aria-label="Обо мне"
       >
-        <div className="max-w-[420px] text-right" style={getRevealStyle(progress, 0.55, 0.65, 0.78, 0.88)}>
+        <div className="max-w-[460px] text-right" style={getRevealStyle(progress, 0.55, 0.65, 0.78, 0.88)}>
           <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Обо мне</p>
           <p className="mt-3 font-serif text-3xl leading-[1.05] text-[#E8E6DC] md:text-4xl">
-            Я ищу не красивый кадр,
+            {ABOUT.title}
             <br />
-            <em className="italic">а честное состояние</em>
+            <em className="italic">{ABOUT.titleAccent}</em>
           </p>
-          <p className="mt-4 text-[12.5px] leading-relaxed text-white/55">
-            Снимаю тех, кому близки серое небо, мокрая трава и долгие паузы.
-            Помогаю расслабиться в кадре, подсказываю с образом и сам нахожу места, где тишина
-            звучит громче всего.
-          </p>
+          <p className="mt-4 text-[12.5px] leading-relaxed text-white/55">{ABOUT.paragraphs[0]}</p>
         </div>
       </section>
 
@@ -684,6 +694,58 @@ function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClos
         )}
       </div>
 
+      {dialog && (
+        <motion.section
+          className="grid grid-cols-1 gap-8 border-b border-white/10 pb-16 lg:grid-cols-12"
+          aria-labelledby="about-title"
+          {...appear}
+          transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div className="lg:col-span-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Обо мне</p>
+            <h2
+              id="about-title"
+              className="mt-5 font-serif uppercase leading-[0.9] text-[#E8E6DC]"
+              style={{ fontSize: 'clamp(2rem, 3.6vw, 4.5rem)' }}
+            >
+              {ABOUT.title}
+              <br />
+              <em className="italic">
+                {ABOUT.titleAccent.split(' ').map((word, i) => (
+                  // «Санкт-Петербурге» не переносим по дефису
+                  <span key={i} className="whitespace-nowrap">
+                    {i > 0 && ' '}
+                    {word}
+                  </span>
+                ))}
+              </em>
+            </h2>
+          </div>
+          <div className="flex max-w-[600px] flex-col gap-5 text-[15px] leading-[1.7] text-white/70 lg:col-span-6 lg:col-start-7 lg:pt-10">
+            {ABOUT.paragraphs.map((text) => (
+              <p key={text}>{text}</p>
+            ))}
+
+            <div className="mt-6">
+              <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Биография</h3>
+              <ol className="relative mt-5 flex flex-col gap-6 border-l border-white/15 pl-6 text-[14px] leading-relaxed">
+                {ABOUT.bio.map((text, i) => (
+                  <li key={text} className="relative">
+                    <span
+                      className={`absolute -left-[28.5px] top-[0.55em] h-2 w-2 rounded-full ${
+                        i === 0 ? 'bg-[#E8E6DC]' : 'border border-[#E8E6DC]/60 bg-[#020202]'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    {text}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        </motion.section>
+      )}
+
       <div className="grid grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
         <motion.div
           className="lg:col-span-7"
@@ -745,7 +807,7 @@ function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClos
       <motion.div
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-labelledby="about-title"
         className={`fixed inset-0 z-[60] overflow-y-auto ${layout}`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

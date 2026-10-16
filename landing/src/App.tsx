@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, ArrowUp, ArrowUpRight, Send } from 'lucide-react'
+import { ArrowLeft, ArrowUp, ArrowUpRight, Send, X } from 'lucide-react'
 
 /* ---------- Константы ---------- */
 
@@ -80,10 +80,6 @@ function scrollToFraction(fraction: number) {
   window.scrollTo({ top: fraction * stageScrollLength(), behavior: 'smooth' })
 }
 
-function scrollToContacts() {
-  document.getElementById('contacts')?.scrollIntoView({ behavior: 'smooth' })
-}
-
 /** Элемент исчезает (fade + blur + подъём), пока прогресс идёт от start к end. */
 function getStaggerStyle(progress: number, start: number, end: number): CSSProperties {
   const ratio = clamp01((progress - start) / (end - start))
@@ -156,6 +152,8 @@ function InstagramIcon({ className }: { className?: string }) {
 
 export default function App() {
   const [progress, setProgress] = useState(0)
+  const [contactsOpen, setContactsOpen] = useState(false)
+  const closeContacts = useCallback(() => setContactsOpen(false), [])
 
   const targetScrollFractionRef = useRef(0)
   const currentScrollFractionRef = useRef(0)
@@ -328,7 +326,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() =>
-                      item.target === 'contacts' ? scrollToContacts() : scrollToFraction(item.target)
+                      item.target === 'contacts' ? setContactsOpen(true) : scrollToFraction(item.target)
                     }
                     className="group relative cursor-pointer py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]"
                   >
@@ -364,7 +362,8 @@ export default function App() {
 
             <button
               type="button"
-              onClick={scrollToContacts}
+              onClick={() => setContactsOpen(true)}
+              aria-haspopup="dialog"
               className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
             >
               <span className="relative flex h-1.5 w-1.5">
@@ -609,6 +608,10 @@ export default function App() {
       <div id="stage" className="h-[650vh]" aria-hidden="true" />
 
       <ContactsSection />
+
+      <AnimatePresence>
+        {contactsOpen && <ContactsSection dialog onClose={closeContacts} />}
+      </AnimatePresence>
     </div>
   )
 }
@@ -628,34 +631,68 @@ const reveal = {
   viewport: { once: true, amount: 0.3 },
 }
 
-function ContactsSection() {
-  return (
-    <section
-      id="contacts"
-      className="relative z-40 flex min-h-[100svh] flex-col justify-between gap-16 border-t border-white/10 bg-[#020202] p-6 md:p-10 lg:p-12"
-      aria-labelledby="contacts-title"
-    >
+/**
+ * Контакты. Без `dialog` — отдельный экран в конце страницы.
+ * С `dialog` — тот же экран поверх страницы, открывается кнопкой «Записаться» прямо на месте.
+ */
+function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClose?: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const titleId = dialog ? 'contacts-dialog-title' : 'contacts-title'
+
+  // Окно: блокируем прокрутку страницы под ним, закрываем по Esc, фокус на «Закрыть»
+  useEffect(() => {
+    if (!dialog) return
+    const root = document.documentElement
+    const prevOverflow = root.style.overflow
+    root.style.overflow = 'hidden'
+    closeRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose?.()
+    window.addEventListener('keydown', onKey)
+    return () => {
+      root.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [dialog, onClose])
+
+  const appear = dialog
+    ? { initial: { opacity: 0, y: 30 }, animate: { opacity: 1, y: 0 } }
+    : reveal
+
+  const body = (
+    <>
       <div className="flex items-start justify-between gap-6">
         <img src={asset('logo.svg')} alt="VAAAAAAG" width={48} height={48} className="h-12 w-12" />
-        <button
-          type="button"
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="group flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50 transition-colors duration-300 hover:text-[#E8E6DC]"
-        >
-          Наверх
-          <ArrowUp className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5" strokeWidth={1.6} />
-        </button>
+        {dialog ? (
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className="group flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60 transition-colors duration-300 hover:text-[#E8E6DC]"
+          >
+            Закрыть
+            <X className="h-4 w-4 transition-transform duration-300 group-hover:rotate-90" strokeWidth={1.6} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="group flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50 transition-colors duration-300 hover:text-[#E8E6DC]"
+          >
+            Наверх
+            <ArrowUp className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5" strokeWidth={1.6} />
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
         <motion.div
           className="lg:col-span-7"
-          {...reveal}
+          {...appear}
           transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
         >
           <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Контакты</p>
           <h2
-            id="contacts-title"
+            id={titleId}
             className="mt-5 font-serif uppercase leading-[0.88] text-[#E8E6DC]"
             style={{ fontSize: 'clamp(2.5rem, 5.6vw, 7.5rem)' }}
           >
@@ -685,7 +722,7 @@ function ContactsSection() {
 
         <motion.ul
           className="divide-y divide-white/10 border-y border-white/10 text-[15px] lg:col-span-5"
-          {...reveal}
+          {...appear}
           transition={{ duration: 1.1, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
         >
           {CONTACTS.map((c) => (
@@ -698,6 +735,31 @@ function ContactsSection() {
         <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
         <span>Санкт-Петербург и область</span>
       </footer>
+    </>
+  )
+
+  const layout = 'flex min-h-[100svh] flex-col justify-between gap-16 bg-[#020202] p-6 md:p-10 lg:p-12'
+
+  if (dialog) {
+    return (
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={`fixed inset-0 z-[60] overflow-y-auto ${layout}`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      >
+        {body}
+      </motion.div>
+    )
+  }
+
+  return (
+    <section id="contacts" className={`relative z-40 border-t border-white/10 ${layout}`} aria-labelledby={titleId}>
+      {body}
     </section>
   )
 }

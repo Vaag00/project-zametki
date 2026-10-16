@@ -418,9 +418,9 @@ export default function App() {
                   aria-label="Открыть серию «Туман и вода»"
                 >
                   <img
-                    src={asset('hero.png')}
+                    src={asset('hero.jpg')}
                     alt="Портрет из серии «Туман и вода»"
-                    className="h-full w-full object-contain object-bottom"
+                    className="h-full w-full object-cover object-top"
                   />
                   <ArrowUpRight
                     className="absolute right-3 top-3 h-4 w-4 text-white/50 transition-colors duration-300 group-hover:text-[#E8E6DC]"
@@ -535,7 +535,7 @@ export default function App() {
                 <img
                   src={panel.image}
                   alt={panel.category}
-                  className="absolute inset-0 h-full w-full object-cover"
+                  className="absolute inset-0 h-full w-full object-cover object-[50%_25%]"
                 />
               </div>
 

@@ -441,6 +441,11 @@ function Landing() {
         <span className="scroll-cue relative h-14 w-px overflow-hidden bg-white/10" />
       </div>
 
+      {/* ---------- Кнопка записи: всегда сверху справа ---------- */}
+      <div className="fixed right-6 top-6 z-50 md:right-10 md:top-10 lg:right-12 lg:top-12">
+        <BookButton onClick={() => setDialog({ section: 'booking' })} />
+      </div>
+
       {/* ---------- Прогресс-бар ---------- */}
       <div
         className="fixed left-0 top-0 z-50 h-[2.5px]"
@@ -526,19 +531,8 @@ function Landing() {
               </a>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setDialog({ section: 'booking' })}
-              aria-haspopup="dialog"
-              className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
-            >
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E8E6DC] opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#E8E6DC] transition-colors duration-300 group-hover:bg-[#121212]" />
-              </span>
-              <span className="hidden sm:inline">Записаться</span>
-              <span className="sm:hidden">Запись</span>
-            </button>
+            {/* Место под кнопку записи: сама кнопка закреплена сверху и не исчезает при прокрутке */}
+            <BookButton placeholder />
           </nav>
         </header>
 
@@ -1167,16 +1161,7 @@ function ContactsSection({
             Закрыть
             <X className="h-4 w-4 transition-transform duration-300 group-hover:rotate-90" strokeWidth={1.6} />
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="group flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50 transition-colors duration-300 hover:text-[#E8E6DC]"
-          >
-            Наверх
-            <ArrowUp className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5" strokeWidth={1.6} />
-          </button>
-        )}
+        ) : null}
       </div>
 
       {dialog && (
@@ -1291,9 +1276,20 @@ function ContactsSection({
         </motion.ul>
       </div>
 
-      <footer className="flex flex-col gap-2 text-[11px] text-white/35 sm:flex-row sm:justify-between">
+      <footer className="flex flex-col gap-2 text-[11px] text-white/35 sm:flex-row sm:items-center sm:justify-between">
         <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
         <span>Санкт-Петербург и область</span>
+        {!dialog && (
+          // «Наверх» внизу: правый верхний угол занят закреплённой кнопкой записи
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="group flex cursor-pointer items-center gap-2 self-start text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50 transition-colors duration-300 hover:text-[#E8E6DC] sm:self-auto"
+          >
+            Наверх
+            <ArrowUp className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5" strokeWidth={1.6} />
+          </button>
+        )}
       </footer>
     </>
   )
@@ -1771,6 +1767,28 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.8} />}
       {copied ? 'Скопировано' : 'Скопировать текст'}
+    </button>
+  )
+}
+
+/** Кнопка «Записаться». `placeholder` — невидимая копия, держит для неё место в меню. */
+function BookButton({ onClick, placeholder = false }: { onClick?: () => void; placeholder?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-haspopup="dialog"
+      {...(placeholder ? { 'aria-hidden': true, tabIndex: -1, disabled: true } : {})}
+      className={`group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/25 bg-[#020202]/70 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212] ${
+        placeholder ? 'invisible' : ''
+      }`}
+    >
+      <span className="relative flex h-1.5 w-1.5">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E8E6DC] opacity-75" />
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#E8E6DC] transition-colors duration-300 group-hover:bg-[#121212]" />
+      </span>
+      <span className="hidden sm:inline">Записаться</span>
+      <span className="sm:hidden">Запись</span>
     </button>
   )
 }

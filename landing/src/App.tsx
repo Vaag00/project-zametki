@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Send, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Check, Copy, Send, X } from 'lucide-react'
+import {
+  PACKAGES,
+  SLOT_TIMES,
+  addDays,
+  allSlots,
+  bookingMessage,
+  bookingWindow,
+  formatDateRu,
+  formatPrice,
+  LIMITS,
+  validateBooking,
+  weekday,
+  type BookingRequest,
+  type Package,
+  type PackageId,
+} from '../shared/booking'
+
+/** Адрес сервера записи (booking-worker). Пусто — запись работает в демо-режиме: заявку клиент отправляет сам в Telegram. */
+const BOOKING_API = (import.meta.env.VITE_BOOKING_API as string | undefined)?.replace(/\/$/, '')
 
 /* ---------- Константы ---------- */
 
@@ -16,7 +35,8 @@ const asset = (file: string) => `${import.meta.env.BASE_URL}${file}`
 const LERP_SCROLL = 0.05
 const LERP_VIDEO = 0.08
 
-type Package = { name: string; photos: string; price: number }
+const pkg = (...ids: PackageId[]) => PACKAGES.filter((p) => ids.includes(p.id))
+
 type Panel = {
   id: 1 | 2
   category: string
@@ -41,10 +61,7 @@ const PANELS: Record<1 | 2, Panel> = {
     description:
       'Неспешная прогулка по лесу или берегу залива на рассвете. Туман, влажный воздух, мягкий свет — и ты в нём.',
     image: asset('series1.jpg'),
-    packages: [
-      { name: 'Минимальный', photos: '50 фото', price: 6500 },
-      { name: 'Стандартный', photos: '100 фото', price: 9000 },
-    ],
+    packages: pkg('minimal', 'standard'),
   },
   2: {
     id: 2,
@@ -53,7 +70,7 @@ const PANELS: Record<1 | 2, Panel> = {
     description:
       'Длинная съёмка с несколькими образами и локациями. Глубокие тени, вода, драматичный свет — история целиком.',
     image: asset('series2.jpg'),
-    packages: [{ name: 'Максимальный', photos: '200 фото + флешка', price: 15000 }],
+    packages: pkg('maximal'),
   },
 }
 
@@ -127,7 +144,6 @@ function plural(n: number, one: string, few: string, many: string) {
   return `${n} ${many}`
 }
 
-const formatPrice = (n: number) => `${n.toLocaleString('ru-RU')} ₽`
 
 /* ---------- Страницы ----------
  * Главная — без хеша. Портфолио — отдельная страница: #portfolio или #portfolio-<серия>.
@@ -286,8 +302,8 @@ export default function App() {
 
 function Landing() {
   const [progress, setProgress] = useState(0)
-  const [contactsOpen, setContactsOpen] = useState(false)
-  const closeContacts = useCallback(() => setContactsOpen(false), [])
+  const [dialog, setDialog] = useState<DialogState>(null)
+  const closeDialog = useCallback(() => setDialog(null), [])
 
   // Карточка на первом экране листает серии; на наведении — пауза
   const [heroSeries, setHeroSeries] = useState(0)
@@ -473,7 +489,7 @@ function Landing() {
                     type="button"
                     onClick={() =>
                       item.target === 'contacts'
-                        ? setContactsOpen(true)
+                        ? setDialog({ section: 'contacts' })
                         : item.target === 'portfolio'
                           ? openPortfolio()
                           : scrollToFraction(item.target)
@@ -512,7 +528,7 @@ function Landing() {
 
             <button
               type="button"
-              onClick={() => setContactsOpen(true)}
+              onClick={() => setDialog({ section: 'booking' })}
               aria-haspopup="dialog"
               className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
             >
@@ -775,18 +791,18 @@ function Landing() {
                   </div>
                 </div>
 
-                <a
-                  href={TELEGRAM_CHANNEL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group inline-flex items-center justify-center gap-2 rounded-full bg-[#121212] px-6 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#FAF9F5] transition-colors duration-300 hover:bg-[#2a2a28]"
+                <button
+                  type="button"
+                  onClick={() => setDialog({ section: 'booking', packageId: selectedPackage.id })}
+                  aria-haspopup="dialog"
+                  className="group inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-[#121212] px-6 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#FAF9F5] transition-colors duration-300 hover:bg-[#2a2a28]"
                 >
                   Забронировать съёмку
                   <ArrowUpRight
                     className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
                     strokeWidth={1.8}
                   />
-                </a>
+                </button>
               </div>
             </motion.div>
           </AnimatePresence>
@@ -799,7 +815,7 @@ function Landing() {
       <ContactsSection />
 
       <AnimatePresence>
-        {contactsOpen && <ContactsSection dialog onClose={closeContacts} />}
+        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
       </AnimatePresence>
     </div>
   )
@@ -811,8 +827,8 @@ function PortfolioPage({ initialSeries }: { initialSeries: string }) {
   const [filter, setFilter] = useState(initialSeries)
   const [lightbox, setLightbox] = useState<{ shots: Shot[]; index: number } | null>(null)
   const closeLightbox = useCallback(() => setLightbox(null), [])
-  const [contactsOpen, setContactsOpen] = useState(false)
-  const closeContacts = useCallback(() => setContactsOpen(false), [])
+  const [dialog, setDialog] = useState<DialogState>(null)
+  const closeDialog = useCallback(() => setDialog(null), [])
 
   const navLink =
     'group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] transition-colors duration-300'
@@ -845,7 +861,7 @@ function PortfolioPage({ initialSeries }: { initialSeries: string }) {
               </span>
             </li>
             <li>
-              <button type="button" onClick={() => setContactsOpen(true)} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
+              <button type="button" onClick={() => setDialog({ section: 'about' })} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
                 Обо мне
                 <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
               </button>
@@ -862,7 +878,7 @@ function PortfolioPage({ initialSeries }: { initialSeries: string }) {
           </div>
           <button
             type="button"
-            onClick={() => setContactsOpen(true)}
+            onClick={() => setDialog({ section: 'booking' })}
             aria-haspopup="dialog"
             className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
           >
@@ -897,7 +913,7 @@ function PortfolioPage({ initialSeries }: { initialSeries: string }) {
       </AnimatePresence>
 
       <AnimatePresence>
-        {contactsOpen && <ContactsSection dialog onClose={closeContacts} />}
+        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
       </AnimatePresence>
     </div>
   )
@@ -1099,6 +1115,9 @@ const CONTACTS = [
 
 const noop = () => {}
 
+/** Какое окно открыто и на каком разделе. */
+type DialogState = { section: 'booking' | 'about' | 'contacts'; packageId?: PackageId } | null
+
 const reveal = {
   initial: { opacity: 0, y: 40, filter: 'blur(10px)' },
   whileInView: { opacity: 1, y: 0, filter: 'blur(0px)' },
@@ -1109,11 +1128,26 @@ const reveal = {
  * Контакты. Без `dialog` — отдельный экран в конце страницы.
  * С `dialog` — тот же экран поверх страницы, открывается кнопкой «Записаться» прямо на месте.
  */
-function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClose?: () => void }) {
+function ContactsSection({
+  dialog = false,
+  onClose,
+  section = 'booking',
+  packageId,
+}: {
+  dialog?: boolean
+  onClose?: () => void
+  section?: 'booking' | 'about' | 'contacts'
+  packageId?: PackageId
+}) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const titleId = dialog ? 'contacts-dialog-title' : 'contacts-title'
 
   useModal(dialog, onClose ?? noop, closeRef)
+
+  // Окно открыли кнопкой «Контакты» или «Обо мне» — сразу показываем этот раздел
+  useEffect(() => {
+    if (dialog && section !== 'booking') document.getElementById(`dlg-${section}`)?.scrollIntoView({ block: 'start' })
+  }, [dialog, section])
 
   const appear = dialog
     ? { initial: { opacity: 0, y: 30 }, animate: { opacity: 1, y: 0 } }
@@ -1147,7 +1181,20 @@ function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClos
 
       {dialog && (
         <motion.section
-          className="grid grid-cols-1 gap-8 border-b border-white/10 pb-16 lg:grid-cols-12"
+          id="dlg-booking"
+          className="scroll-mt-6 border-b border-white/10 pb-16"
+          aria-labelledby="booking-title"
+          {...appear}
+          transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <BookingFlow initialPackage={packageId} />
+        </motion.section>
+      )}
+
+      {dialog && (
+        <motion.section
+          id="dlg-about"
+          className="grid scroll-mt-6 grid-cols-1 gap-8 border-b border-white/10 pb-16 lg:grid-cols-12"
           aria-labelledby="about-title"
           {...appear}
           transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
@@ -1197,7 +1244,7 @@ function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClos
         </motion.section>
       )}
 
-      <div className="grid grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
+      <div id={dialog ? 'dlg-contacts' : undefined} className="grid scroll-mt-6 grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
         <motion.div
           className="lg:col-span-7"
           {...appear}
@@ -1258,7 +1305,7 @@ function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClos
       <motion.div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="about-title"
+        aria-labelledby="booking-title"
         className={`fixed inset-0 z-[60] overflow-y-auto ${layout}`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -1274,6 +1321,457 @@ function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClos
     <section id="contacts" className={`relative z-40 border-t border-white/10 ${layout}`} aria-labelledby={titleId}>
       {body}
     </section>
+  )
+}
+
+/* ---------- Запись на съёмку ---------- */
+
+const WEEK = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+
+function monthLabel(ym: string) {
+  const label = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${ym}-01T00:00:00Z`))
+    .replace(/\s*г\.$/, '')
+  return label[0].toUpperCase() + label.slice(1)
+}
+
+function shiftMonth(ym: string, step: number) {
+  const [y, m] = ym.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + step, 1))
+  return d.toISOString().slice(0, 7)
+}
+
+/** Ячейки месяца, неделя с понедельника; null — пустые клетки до первого числа. */
+function monthCells(ym: string): (string | null)[] {
+  const first = `${ym}-01`
+  const lead = (weekday(first) + 6) % 7
+  const cells: (string | null)[] = Array(lead).fill(null)
+  for (let d = first; d.startsWith(ym); d = addDays(d, 1)) cells.push(d)
+  return cells
+}
+
+type Slots = Record<string, string[]>
+type SlotsState = { status: 'loading' } | { status: 'ready'; slots: Slots } | { status: 'error' }
+type SendState =
+  | { status: 'idle' }
+  | { status: 'sending' }
+  | { status: 'sent'; request: BookingRequest }
+  | { status: 'manual'; request: BookingRequest }
+  | { status: 'error'; message: string }
+
+function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
+  const window_ = bookingWindow()
+  const [packageId, setPackageId] = useState<PackageId>(initialPackage ?? 'standard')
+  const [date, setDate] = useState<string | null>(null)
+  const [time, setTime] = useState<string | null>(null)
+  const [month, setMonth] = useState(window_.first.slice(0, 7))
+  const [form, setForm] = useState({ name: '', contact: '', comment: '', website: '' })
+  const [slots, setSlots] = useState<SlotsState>({ status: 'loading' })
+  const [send, setSend] = useState<SendState>({ status: 'idle' })
+  const [fieldError, setFieldError] = useState<string | null>(null)
+
+  const loadSlots = useCallback(async () => {
+    if (!BOOKING_API) {
+      // Демо: сервер не подключён, показываем все окошки по расписанию
+      setSlots({ status: 'ready', slots: allSlots(window_.first, window_.last) })
+      return
+    }
+    setSlots({ status: 'loading' })
+    try {
+      const res = await fetch(`${BOOKING_API}/slots`)
+      if (!res.ok) throw new Error(String(res.status))
+      const data = (await res.json()) as { slots: Slots }
+      setSlots({ status: 'ready', slots: data.slots })
+    } catch {
+      setSlots({ status: 'error' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    loadSlots()
+  }, [loadSlots])
+
+  const free: Slots = slots.status === 'ready' ? slots.slots : {}
+  const selectedPkg = PACKAGES.find((p) => p.id === packageId)!
+  const firstMonth = window_.first.slice(0, 7)
+  const lastMonth = window_.last.slice(0, 7)
+
+  const request = (): BookingRequest | null =>
+    date && time ? { packageId, date, time, name: form.name, contact: form.contact, comment: form.comment, website: form.website } : null
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    const r = request()
+    const problem = r ? validateBooking(r) : date ? 'Выберите время.' : 'Выберите дату.'
+    if (problem || !r) {
+      setFieldError(problem)
+      return
+    }
+    setFieldError(null)
+
+    if (!BOOKING_API) {
+      setSend({ status: 'manual', request: r })
+      return
+    }
+
+    setSend({ status: 'sending' })
+    try {
+      const res = await fetch(`${BOOKING_API}/bookings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(r),
+      })
+      const data = (await res.json().catch(() => ({}))) as { message?: string }
+      if (res.ok) {
+        setSend({ status: 'sent', request: r })
+        return
+      }
+      if (res.status === 409) {
+        setTime(null)
+        loadSlots()
+      }
+      setSend({ status: 'error', message: data.message ?? 'Не получилось отправить заявку. Напишите мне в Telegram.' })
+    } catch {
+      setSend({ status: 'error', message: 'Нет связи с сервером. Проверьте интернет или напишите мне в Telegram.' })
+    }
+  }
+
+  const eyebrow = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40'
+  const input =
+    'w-full rounded-sm border border-white/15 bg-white/[0.03] px-4 py-3 text-[14px] text-white placeholder:text-white/30 transition-colors duration-300 focus:border-[#E8E6DC] focus:outline-none'
+
+  if (send.status === 'sent' || send.status === 'manual') {
+    const r = send.request
+    const text = bookingMessage(r)
+    return (
+      <div className="grid grid-cols-1 gap-10 lg:grid-cols-12" aria-live="polite">
+        <div className="lg:col-span-6">
+          <p className={eyebrow}>Запись на съёмку</p>
+          <h2 id="booking-title" className="mt-5 font-serif uppercase leading-[0.9] text-[#E8E6DC]" style={{ fontSize: 'clamp(2.25rem, 4.2vw, 5rem)' }}>
+            {send.status === 'sent' ? (
+              <>
+                Заявка
+                <br />
+                <em className="italic">отправлена</em>
+              </>
+            ) : (
+              <>
+                Осталось
+                <br />
+                <em className="italic">отправить</em>
+              </>
+            )}
+          </h2>
+          <p className="mt-6 max-w-[440px] text-[14px] leading-relaxed text-white/60">
+            {send.status === 'sent'
+              ? 'Окошко за вами. Я свяжусь с вами, чтобы подтвердить время и обсудить детали.'
+              : 'Скопируйте текст заявки и отправьте его мне в Telegram — так я увижу её сразу.'}
+          </p>
+        </div>
+        <div className="flex flex-col gap-5 lg:col-span-6">
+          <pre className="whitespace-pre-wrap rounded-sm border border-white/10 bg-white/[0.03] p-5 font-sans text-[13px] leading-relaxed text-white/80">
+            {text}
+          </pre>
+          {send.status === 'manual' && (
+            <div className="flex flex-wrap gap-3">
+              <CopyButton text={text} />
+              <a
+                href={TELEGRAM_PERSONAL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-[#E8E6DC] px-6 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#121212] transition-colors duration-300 hover:bg-white"
+              >
+                Открыть Telegram @vaaaaaag
+                <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+              </a>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setSend({ status: 'idle' })
+              setDate(null)
+              setTime(null)
+              loadSlots()
+            }}
+            className="self-start text-[11px] text-white/45 underline underline-offset-4 transition-colors hover:text-[#E8E6DC]"
+          >
+            Записаться ещё раз
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="flex flex-col gap-12">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className={eyebrow}>Запись на съёмку</p>
+          <h2 id="booking-title" className="mt-5 font-serif uppercase leading-[0.9] text-[#E8E6DC]" style={{ fontSize: 'clamp(2.25rem, 4.2vw, 5rem)' }}>
+            Выберите
+            <br />
+            <em className="italic">своё окошко</em>
+          </h2>
+        </div>
+        <p className="max-w-[360px] text-[12.5px] leading-relaxed text-white/45 lg:text-right">
+          Время — по Петербургу. Заявка придёт мне в Telegram, после неё я подтвержу съёмку лично.
+        </p>
+      </div>
+
+      {/* 1. Пакет */}
+      <fieldset>
+        <legend className={eyebrow}>1 · Пакет</legend>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {PACKAGES.map((p: Package) => {
+            const active = p.id === packageId
+            return (
+              <label
+                key={p.id}
+                className={`flex cursor-pointer flex-col gap-1 rounded-sm border p-4 transition-colors duration-300 has-[:focus-visible]:border-[#E8E6DC] ${
+                  active ? 'border-[#E8E6DC] bg-[#E8E6DC]/[0.06]' : 'border-white/10 hover:border-white/30'
+                }`}
+              >
+                <input type="radio" name="package" value={p.id} checked={active} onChange={() => setPackageId(p.id)} className="sr-only" />
+                <span className="flex items-center justify-between">
+                  <span className="text-[13px] font-medium text-white">{p.name}</span>
+                  <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${active ? 'border-[#E8E6DC] bg-[#E8E6DC]' : 'border-white/30'}`}>
+                    {active && <Check className="h-3 w-3 text-[#121212]" strokeWidth={3} />}
+                  </span>
+                </span>
+                <span className="text-[11px] uppercase tracking-[0.16em] text-white/45">{p.photos}</span>
+                <span className="mt-2 font-serif text-2xl text-[#E8E6DC]">{formatPrice(p.price)}</span>
+              </label>
+            )
+          })}
+        </div>
+      </fieldset>
+
+      <div className="grid grid-cols-1 gap-12 lg:grid-cols-12 lg:gap-10">
+        {/* 2. Дата */}
+        <fieldset className="lg:col-span-6">
+          <legend className={eyebrow}>2 · Дата</legend>
+          <div className="mt-4 max-w-[460px] rounded-sm border border-white/10 p-4 sm:p-5">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setMonth((m) => shiftMonth(m, -1))}
+                disabled={month <= firstMonth}
+                aria-label="Предыдущий месяц"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-white/60 transition-colors hover:text-[#E8E6DC] disabled:cursor-default disabled:opacity-25"
+              >
+                <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
+              </button>
+              <p className="font-serif text-xl text-white/90" aria-live="polite">{monthLabel(month)}</p>
+              <button
+                type="button"
+                onClick={() => setMonth((m) => shiftMonth(m, 1))}
+                disabled={month >= lastMonth}
+                aria-label="Следующий месяц"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-white/60 transition-colors hover:text-[#E8E6DC] disabled:cursor-default disabled:opacity-25"
+              >
+                <ArrowRight className="h-4 w-4" strokeWidth={1.6} />
+              </button>
+            </div>
+            <div className="mt-4 grid grid-cols-7 gap-1 text-center">
+              {WEEK.map((d) => (
+                <span key={d} className="pb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">
+                  {d}
+                </span>
+              ))}
+              {monthCells(month).map((d, i) => {
+                if (!d) return <span key={`e${i}`} />
+                const open = (free[d]?.length ?? 0) > 0
+                const selected = d === date
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    disabled={!open}
+                    onClick={() => {
+                      setDate(d)
+                      setTime(null)
+                      setFieldError(null)
+                    }}
+                    aria-pressed={selected}
+                    aria-label={`${formatDateRu(d)}${open ? `, свободно окошек: ${free[d].length}` : ', нет свободного времени'}`}
+                    className={`relative aspect-square rounded-full text-[13px] tabular-nums transition-colors duration-200 ${
+                      selected
+                        ? 'cursor-pointer bg-[#E8E6DC] font-semibold text-[#121212]'
+                        : open
+                          ? 'cursor-pointer text-white/85 hover:bg-white/10'
+                          : 'cursor-default text-white/20'
+                    }`}
+                  >
+                    {Number(d.slice(8))}
+                    {open && !selected && <span className="absolute bottom-1.5 left-1/2 h-[3px] w-[3px] -translate-x-1/2 rounded-full bg-[#E8E6DC]/60" aria-hidden="true" />}
+                  </button>
+                )
+              })}
+            </div>
+            {slots.status === 'loading' && <p className="mt-3 text-[12px] text-white/40">Загружаю свободное время…</p>}
+            {slots.status === 'error' && (
+              <p className="mt-3 text-[12px] text-white/60">
+                Не удалось загрузить расписание.{' '}
+                <button type="button" onClick={loadSlots} className="underline underline-offset-4 hover:text-[#E8E6DC]">
+                  Попробовать ещё раз
+                </button>
+              </p>
+            )}
+          </div>
+        </fieldset>
+
+        {/* 3. Время и 4. Контакты */}
+        <div className="flex flex-col gap-10 lg:col-span-6">
+          <fieldset>
+            <legend className={eyebrow}>3 · Время</legend>
+            {date ? (
+              <>
+                <p className="mt-4 text-[13px] text-white/60">{formatDateRu(date)}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {SLOT_TIMES.map((t) => {
+                    const open = free[date]?.includes(t)
+                    const selected = t === time
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        disabled={!open}
+                        onClick={() => {
+                          setTime(t)
+                          setFieldError(null)
+                        }}
+                        aria-pressed={selected}
+                        className={`rounded-full border px-3 py-2.5 text-[13px] tabular-nums transition-colors duration-200 ${
+                          selected
+                            ? 'cursor-pointer border-[#E8E6DC] bg-[#E8E6DC] font-semibold text-[#121212]'
+                            : open
+                              ? 'cursor-pointer border-white/15 text-white/85 hover:border-[#E8E6DC]'
+                              : 'cursor-default border-white/5 text-white/25 line-through'
+                        }`}
+                      >
+                        {t}
+                        {!open && <span className="sr-only"> — занято</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="mt-4 text-[13px] text-white/40">Сначала выберите дату в календаре.</p>
+            )}
+          </fieldset>
+
+          <fieldset className="flex flex-col gap-3">
+            <legend className={eyebrow}>4 · Как с вами связаться</legend>
+            <label className="mt-4 flex flex-col gap-1.5">
+              <span className="text-[12px] text-white/55">Имя</span>
+              <input
+                id="booking-name"
+                className={input}
+                value={form.name}
+                maxLength={LIMITS.name}
+                autoComplete="name"
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] text-white/55">Telegram или телефон</span>
+              <input
+                id="booking-contact"
+                className={input}
+                value={form.contact}
+                maxLength={LIMITS.contact}
+                placeholder="@username или +7 …"
+                autoComplete="tel"
+                onChange={(e) => setForm({ ...form, contact: e.target.value })}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] text-white/55">Идея съёмки, образ, локация — по желанию</span>
+              <textarea
+                id="booking-comment"
+                className={`${input} min-h-[96px] resize-y`}
+                value={form.comment}
+                maxLength={LIMITS.comment}
+                onChange={(e) => setForm({ ...form, comment: e.target.value })}
+              />
+            </label>
+            {/* Ловушка для ботов: скрыта от людей */}
+            <input
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              value={form.website}
+              onChange={(e) => setForm({ ...form, website: e.target.value })}
+              className="absolute -left-[9999px] h-px w-px opacity-0"
+              aria-hidden="true"
+            />
+          </fieldset>
+        </div>
+      </div>
+
+      {/* Итог и отправка */}
+      <div className="flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-[13px] text-white/60" aria-live="polite">
+          <span className="text-white">{selectedPkg.name}</span> · {selectedPkg.photos} · <span className="font-serif text-lg text-[#E8E6DC]">{formatPrice(selectedPkg.price)}</span>
+          <br />
+          {date ? formatDateRu(date) : 'дата не выбрана'}
+          {time ? `, ${time}` : date ? ', время не выбрано' : ''}
+        </div>
+        <button
+          type="submit"
+          disabled={send.status === 'sending'}
+          className="group inline-flex cursor-pointer items-center justify-center gap-3 rounded-full bg-[#E8E6DC] px-7 py-4 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#121212] transition-colors duration-300 hover:bg-white disabled:cursor-wait disabled:opacity-60"
+        >
+          {send.status === 'sending' ? 'Отправляю…' : 'Отправить заявку'}
+          <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" strokeWidth={1.8} />
+        </button>
+      </div>
+      {(fieldError || send.status === 'error') && (
+        <p role="alert" className="-mt-8 text-[13px] text-[#E8E6DC]">
+          {fieldError ?? (send.status === 'error' ? send.message : '')}{' '}
+          {send.status === 'error' && (
+            <a href={TELEGRAM_PERSONAL} target="_blank" rel="noreferrer" className="underline underline-offset-4">
+              Telegram @vaaaaaag
+            </a>
+          )}
+        </p>
+      )}
+      {!BOOKING_API && (
+        <p className="-mt-8 text-[11.5px] text-white/35">
+          Онлайн-запись пока в тестовом режиме: после нажатия вы получите готовый текст заявки для Telegram.
+        </p>
+      )}
+    </form>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard
+          ?.writeText(text)
+          .then(() => {
+            setCopied(true)
+            window.setTimeout(() => setCopied(false), 2000)
+          })
+          .catch(() => {
+            // Буфер обмена недоступен — выделяем текст, чтобы скопировать вручную
+            const pre = document.querySelector('pre')
+            if (pre) window.getSelection()?.selectAllChildren(pre)
+          })
+      }}
+      className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/20 px-6 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:text-[#E8E6DC]"
+    >
+      {copied ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.8} />}
+      {copied ? 'Скопировано' : 'Скопировать текст'}
+    </button>
   )
 }
 

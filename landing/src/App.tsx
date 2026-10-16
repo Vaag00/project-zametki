@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, ArrowUp, ArrowUpRight, Send, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Send, X } from 'lucide-react'
 
 /* ---------- Константы ---------- */
 
@@ -71,9 +71,45 @@ const ABOUT = {
   ],
 }
 
+/* ---------- Портфолио ----------
+ * Новое фото: положить public/portfolio/<id>.jpg (до 1800 px) и <id>-sm.jpg (до 900 px)
+ * и добавить строку в нужную серию. Новая серия — новый объект в SERIES.
+ * Первое фото серии — её обложка на первом экране, поэтому лучше вертикальное. */
+type Photo = { id: string; w: number; h: number; alt: string }
+type Series = { id: string; title: string; description: string; photos: Photo[] }
+
+const SERIES: Series[] = [
+  {
+    id: 'forest',
+    title: 'Лес и туман',
+    description: 'Лесные тропы, старые ели и рассеянный свет сквозь хвою.',
+    photos: [
+      { id: 'forest-road', w: 2, h: 3, alt: 'Девушка на лесной дороге запрокинула голову к свету' },
+      { id: 'forest-tree', w: 2, h: 3, alt: 'Портрет у ствола старой ели' },
+    ],
+  },
+  {
+    id: 'dark',
+    title: 'Тёмные образы',
+    description: 'Готические арки, камень и тень. Драматичный свет и образы на грани сказки.',
+    photos: [
+      { id: 'dark-arch', w: 2, h: 3, alt: 'Кружение в белой юбке под каменной аркой' },
+      { id: 'dark-door', w: 3, h: 2, alt: 'Портрет у готической двери склепа' },
+    ],
+  },
+]
+
+const photoSrc = (id: string, small = false) => asset(`portfolio/${id}${small ? '-sm' : ''}.jpg`)
+
+type Shot = Photo & { series: Series }
+const shotsOf = (filter: string): Shot[] =>
+  SERIES.filter((x) => filter === 'all' || x.id === filter).flatMap((x) =>
+    x.photos.map((photo) => ({ ...photo, series: x })),
+  )
+
 const NAV = [
-  { label: 'Серии', target: 0.45 },
-  { label: 'Услуги', target: 1 },
+  { label: 'Портфолио', target: 'portfolio' as const },
+  { label: 'Услуги', target: 0.45 },
   { label: 'Обо мне', target: 0.7 },
   { label: 'Контакты', target: 'contacts' as const },
 ]
@@ -82,7 +118,51 @@ const NAV = [
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
+/** «1 серия», «2 серии», «5 серий» */
+function plural(n: number, one: string, few: string, many: string) {
+  const m10 = n % 10
+  const m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return `${n} ${one}`
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} ${few}`
+  return `${n} ${many}`
+}
+
 const formatPrice = (n: number) => `${n.toLocaleString('ru-RU')} ₽`
+
+/** Мгновенный переход к разделу после сцены: плавная прокрутка проматывала бы все панели. */
+function jumpTo(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'instant', block: 'start' })
+}
+
+/**
+ * Поведение окна поверх страницы: страница под ним не прокручивается,
+ * фокус переходит на кнопку закрытия, Esc закрывает. `onKey` — дополнительные клавиши.
+ */
+function useModal(
+  active: boolean,
+  onClose: () => void,
+  focusRef: React.RefObject<HTMLElement | null>,
+  onKey?: (e: KeyboardEvent) => void,
+) {
+  const onKeyRef = useRef(onKey)
+  onKeyRef.current = onKey
+  useEffect(() => {
+    if (!active) return
+    const root = document.documentElement
+    const prevOverflow = root.style.overflow
+    root.style.overflow = 'hidden'
+    focusRef.current?.focus()
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      else onKeyRef.current?.(e)
+    }
+    window.addEventListener('keydown', handler)
+    return () => {
+      root.style.overflow = prevOverflow
+      window.removeEventListener('keydown', handler)
+    }
+  }, [active, onClose, focusRef])
+}
 
 /** Сколько пикселей прокрутки занимает сцена с видео (всё, что до блока контактов). */
 function stageScrollLength() {
@@ -168,6 +248,26 @@ export default function App() {
   const [progress, setProgress] = useState(0)
   const [contactsOpen, setContactsOpen] = useState(false)
   const closeContacts = useCallback(() => setContactsOpen(false), [])
+
+  const [portfolioFilter, setPortfolioFilter] = useState('all')
+  const [lightbox, setLightbox] = useState<{ shots: Shot[]; index: number } | null>(null)
+  const closeLightbox = useCallback(() => setLightbox(null), [])
+  const openSeries = (id: string) => {
+    setPortfolioFilter(id)
+    jumpTo('portfolio')
+  }
+
+  // Карточка на первом экране листает серии; на наведении — пауза
+  const [heroSeries, setHeroSeries] = useState(0)
+  const heroPausedRef = useRef(false)
+  useEffect(() => {
+    if (SERIES.length < 2) return
+    const timer = window.setInterval(() => {
+      if (!heroPausedRef.current) setHeroSeries((i) => (i + 1) % SERIES.length)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const hero = SERIES[heroSeries]
 
   const targetScrollFractionRef = useRef(0)
   const currentScrollFractionRef = useRef(0)
@@ -334,15 +434,19 @@ export default function App() {
           </div>
 
           <nav className="flex items-center gap-5 lg:gap-7" style={s(0.03, 0.15)}>
-            <ul className="hidden items-center gap-6 md:flex lg:gap-8">
+            <ul className="hidden items-center gap-5 md:flex xl:gap-8">
               {NAV.map((item) => (
                 <li key={item.label}>
                   <button
                     type="button"
                     onClick={() =>
-                      item.target === 'contacts' ? setContactsOpen(true) : scrollToFraction(item.target)
+                      item.target === 'contacts'
+                        ? setContactsOpen(true)
+                        : item.target === 'portfolio'
+                          ? jumpTo('portfolio')
+                          : scrollToFraction(item.target)
                     }
-                    className="group relative cursor-pointer py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]"
+                    className="group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]"
                   >
                     {item.label}
                     <span className="absolute -bottom-0.5 left-0 h-px w-full origin-right scale-x-0 bg-[#E8E6DC] transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:origin-left group-hover:scale-x-100" />
@@ -422,29 +526,72 @@ export default function App() {
           </div>
 
           <aside className="hidden lg:col-span-5 lg:flex lg:justify-end">
-            <div className="group w-full max-w-[240px]">
+            <div
+              className="group w-full max-w-[240px]"
+              onMouseEnter={() => (heroPausedRef.current = true)}
+              onMouseLeave={() => (heroPausedRef.current = false)}
+            >
               <div style={s(0.14, 0.25)}>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">
-                  Серия
-                </p>
-                <p className="mt-1 font-serif text-2xl italic text-white/90">Туман и вода</p>
-                <p className="mt-2 text-[11.5px] leading-relaxed text-white/45">
-                  Портреты у воды на рассвете, когда туман ещё не успел подняться.
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Серия</p>
+                  {SERIES.length > 1 && (
+                    <div className="flex gap-1.5">
+                      {SERIES.map((x, i) => (
+                        <button
+                          key={x.id}
+                          type="button"
+                          onClick={() => setHeroSeries(i)}
+                          aria-label={`Показать серию «${x.title}»`}
+                          aria-current={i === heroSeries}
+                          className="group/dot flex h-4 cursor-pointer items-center"
+                        >
+                          <span
+                            className={`block h-px transition-all duration-500 ${
+                              i === heroSeries ? 'w-6 bg-[#E8E6DC]' : 'w-3 bg-white/25 group-hover/dot:bg-white/60'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="relative mt-1 min-h-[96px]">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={hero.id}
+                      initial={{ opacity: 0, y: 8, filter: 'blur(6px)' }}
+                      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                      exit={{ opacity: 0, y: -8, filter: 'blur(6px)' }}
+                      transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <p className="font-serif text-2xl italic text-white/90">{hero.title}</p>
+                      <p className="mt-2 text-[11.5px] leading-relaxed text-white/45">{hero.description}</p>
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
               </div>
 
-              <div className="mt-5" style={s(0.18, 0.29)}>
+              <div className="mt-3" style={s(0.18, 0.29)}>
                 <button
                   type="button"
-                  onClick={() => scrollToFraction(0.45)}
+                  onClick={() => openSeries(hero.id)}
                   className="hero-card relative block aspect-[4/5] w-full cursor-pointer overflow-hidden rounded-sm border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.01] p-3 transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.04]"
-                  aria-label="Открыть серию «Туман и вода»"
+                  aria-label={`Открыть серию «${hero.title}» в портфолио`}
                 >
-                  <img
-                    src={asset('hero.jpg')}
-                    alt="Портрет из серии «Туман и вода»"
-                    className="h-full w-full object-cover object-top"
-                  />
+                  <span className="relative block h-full w-full overflow-hidden">
+                    <AnimatePresence initial={false}>
+                      <motion.img
+                        key={hero.id}
+                        src={photoSrc(hero.photos[0].id, true)}
+                        alt={hero.photos[0].alt}
+                        className="absolute inset-0 h-full w-full object-cover object-top"
+                        initial={{ opacity: 0, scale: 1.06 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
+                      />
+                    </AnimatePresence>
+                  </span>
                   <ArrowUpRight
                     className="absolute right-3 top-3 h-4 w-4 text-white/50 transition-colors duration-300 group-hover:text-[#E8E6DC]"
                     strokeWidth={1.5}
@@ -617,12 +764,220 @@ export default function App() {
       {/* Длина сцены: прокрутка по ней управляет видео и панелями */}
       <div id="stage" className="h-[650vh]" aria-hidden="true" />
 
+      <PortfolioSection
+        filter={portfolioFilter}
+        onFilter={setPortfolioFilter}
+        onOpen={(shots, index) => setLightbox({ shots, index })}
+      />
+
       <ContactsSection />
+
+      <AnimatePresence>
+        {lightbox && (
+          <Lightbox
+            shots={lightbox.shots}
+            index={lightbox.index}
+            onIndex={(index) => setLightbox((l) => (l ? { ...l, index } : l))}
+            onClose={closeLightbox}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {contactsOpen && <ContactsSection dialog onClose={closeContacts} />}
       </AnimatePresence>
     </div>
+  )
+}
+
+/* ---------- Портфолио: раздел после сцены ---------- */
+
+function PortfolioSection({
+  filter,
+  onFilter,
+  onOpen,
+}: {
+  filter: string
+  onFilter: (id: string) => void
+  onOpen: (shots: Shot[], index: number) => void
+}) {
+  const shots = shotsOf(filter)
+  const current = SERIES.find((x) => x.id === filter)
+  const tabs = [{ id: 'all', title: 'Все' }, ...SERIES]
+
+  return (
+    <section
+      id="portfolio"
+      className="relative z-40 min-h-[100svh] border-t border-white/10 bg-[#020202] p-6 md:p-10 lg:p-12"
+      aria-labelledby="portfolio-title"
+    >
+      <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Серии</p>
+          <h2
+            id="portfolio-title"
+            className="mt-5 font-serif uppercase leading-[0.9] text-[#E8E6DC]"
+            style={{ fontSize: 'clamp(2.5rem, 5.6vw, 7.5rem)' }}
+          >
+            Портфолио
+          </h2>
+        </div>
+
+        <div className="flex flex-col gap-4 lg:items-end">
+          <div className="flex flex-wrap gap-1 rounded-full border border-white/10 p-1" role="tablist" aria-label="Серии">
+            {tabs.map((t) => {
+              const active = t.id === filter
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => onFilter(t.id)}
+                  className={`relative cursor-pointer rounded-full px-4 py-2 text-[11px] font-medium transition-colors duration-300 ${
+                    active ? 'text-[#121212]' : 'text-white/60 hover:text-[#E8E6DC]'
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="portfolio-tab"
+                      className="absolute inset-0 rounded-full bg-[#E8E6DC]"
+                      transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+                    />
+                  )}
+                  <span className="relative">{t.title}</span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="min-h-[1.5em] max-w-[420px] text-[12.5px] leading-relaxed text-white/45 lg:text-right">
+            {current ? current.description : `${plural(SERIES.length, 'серия', 'серии', 'серий')} · ${shotsOf('all').length} фото`}
+          </p>
+        </div>
+      </div>
+
+      <motion.div
+        key={filter}
+        className="mt-12 columns-1 gap-4 sm:columns-2 lg:columns-3"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      >
+        {shots.map((shot, i) => (
+          <button
+            key={shot.id}
+            type="button"
+            onClick={() => onOpen(shots, i)}
+            className="group relative mb-4 block w-full cursor-zoom-in break-inside-avoid overflow-hidden rounded-sm bg-white/5"
+            style={{ aspectRatio: `${shot.w} / ${shot.h}` }}
+            aria-label={`Открыть фото: ${shot.alt}`}
+          >
+            <img
+              src={photoSrc(shot.id, true)}
+              alt={shot.alt}
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform duration-[1200ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
+            />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-[#020202]/80 to-transparent p-4 pt-12 opacity-0 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100">
+              <span className="font-serif text-lg italic text-[#E8E6DC]">{shot.series.title}</span>
+              <ArrowUpRight className="h-4 w-4 text-[#E8E6DC]" strokeWidth={1.5} />
+            </span>
+          </button>
+        ))}
+      </motion.div>
+    </section>
+  )
+}
+
+/* ---------- Просмотр фото поверх страницы ---------- */
+
+function Lightbox({
+  shots,
+  index,
+  onIndex,
+  onClose,
+}: {
+  shots: Shot[]
+  index: number
+  onIndex: (i: number) => void
+  onClose: () => void
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const count = shots.length
+  const go = (step: number) => onIndex((index + step + count) % count)
+  useModal(true, onClose, closeRef, (e) => {
+    if (e.key === 'ArrowRight') go(1)
+    if (e.key === 'ArrowLeft') go(-1)
+  })
+  const shot = shots[index]
+
+  return (
+    <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${shot.series.title}: ${shot.alt}`}
+      className="fixed inset-0 z-[70] flex flex-col bg-[#020202]/95 p-4 backdrop-blur-sm md:p-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.4 }}
+      onClick={onClose}
+    >
+      <div className="flex items-center justify-between gap-4" onClick={(e) => e.stopPropagation()}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50">
+          {shot.series.title}
+          <span className="ml-3 tabular-nums text-white/30">
+            {index + 1} / {count}
+          </span>
+        </p>
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          className="group flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60 transition-colors duration-300 hover:text-[#E8E6DC]"
+        >
+          Закрыть
+          <X className="h-4 w-4 transition-transform duration-300 group-hover:rotate-90" strokeWidth={1.6} />
+        </button>
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 items-center justify-center py-4">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.img
+            key={shot.id}
+            src={photoSrc(shot.id)}
+            alt={shot.alt}
+            className="max-h-full max-w-full object-contain"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </AnimatePresence>
+      </div>
+
+      {count > 1 && (
+        <div className="flex justify-center gap-3" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => go(-1)}
+            aria-label="Предыдущее фото"
+            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-white/15 text-white/70 transition-colors duration-300 hover:border-[#E8E6DC] hover:text-[#E8E6DC]"
+          >
+            <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
+          </button>
+          <button
+            type="button"
+            onClick={() => go(1)}
+            aria-label="Следующее фото"
+            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-white/15 text-white/70 transition-colors duration-300 hover:border-[#E8E6DC] hover:text-[#E8E6DC]"
+          >
+            <ArrowRight className="h-4 w-4" strokeWidth={1.6} />
+          </button>
+        </div>
+      )}
+    </motion.div>
   )
 }
 
@@ -634,6 +989,8 @@ const CONTACTS = [
   { label: 'Канал', value: 't.me/Vaag_ph', href: TELEGRAM_CHANNEL },
   { label: 'Сайт', value: 'vaag-ph.ru', href: SITE },
 ]
+
+const noop = () => {}
 
 const reveal = {
   initial: { opacity: 0, y: 40, filter: 'blur(10px)' },
@@ -649,20 +1006,7 @@ function ContactsSection({ dialog = false, onClose }: { dialog?: boolean; onClos
   const closeRef = useRef<HTMLButtonElement>(null)
   const titleId = dialog ? 'contacts-dialog-title' : 'contacts-title'
 
-  // Окно: блокируем прокрутку страницы под ним, закрываем по Esc, фокус на «Закрыть»
-  useEffect(() => {
-    if (!dialog) return
-    const root = document.documentElement
-    const prevOverflow = root.style.overflow
-    root.style.overflow = 'hidden'
-    closeRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose?.()
-    window.addEventListener('keydown', onKey)
-    return () => {
-      root.style.overflow = prevOverflow
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [dialog, onClose])
+  useModal(dialog, onClose ?? noop, closeRef)
 
   const appear = dialog
     ? { initial: { opacity: 0, y: 30 }, animate: { opacity: 1, y: 0 } }

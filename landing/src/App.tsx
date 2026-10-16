@@ -233,25 +233,44 @@ export default function App() {
       <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
         <video
           ref={video1Ref}
-          src={asset('video1.mp4')}
           muted
           playsInline
           preload="auto"
           className="absolute inset-0 h-full w-full object-cover transition-opacity duration-700"
           style={{ opacity: firstVideoVisible ? 0.85 : 0 }}
-        />
+        >
+          <source src={asset('video1.webm')} type="video/webm" />
+          <source src={asset('video1.mp4')} type="video/mp4" />
+        </video>
         <video
           ref={video2Ref}
-          src={asset('video2.mp4')}
           muted
           playsInline
           preload="auto"
           className="absolute inset-0 h-full w-full object-cover transition-opacity duration-700"
           style={{ opacity: firstVideoVisible ? 0 : 0.85 }}
-        />
+        >
+          <source src={asset('video2.webm')} type="video/webm" />
+          <source src={asset('video2.mp4')} type="video/mp4" />
+        </video>
         <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-[#020202] via-[#020202]/60 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-[#020202] via-[#020202]/70 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-[65%] bg-gradient-to-t from-[#020202]/85 via-[#020202]/45 to-transparent lg:hidden" />
         <div className="absolute inset-y-0 left-0 hidden w-1/2 bg-gradient-to-r from-[#020202]/90 via-[#020202]/40 to-transparent lg:block" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_45%,rgba(2,2,2,0.65)_100%)]" />
+        <div className="film-grain absolute -inset-[50%]" />
+      </div>
+
+      {/* ---------- Подсказка «листайте» ---------- */}
+      <div
+        className="pointer-events-none fixed right-4 top-1/2 z-10 hidden -translate-y-1/2 flex-col items-center gap-3 lg:flex"
+        style={s(0, 0.04)}
+        aria-hidden="true"
+      >
+        <span className="text-[9px] font-semibold uppercase tracking-[0.35em] text-white/40 [writing-mode:vertical-rl]">
+          Листайте
+        </span>
+        <span className="scroll-cue relative h-14 w-px overflow-hidden bg-white/10" />
       </div>
 
       {/* ---------- Прогресс-бар ---------- */}

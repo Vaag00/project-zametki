@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, ArrowUpRight, Send } from 'lucide-react'
+import { ArrowLeft, ArrowUp, ArrowUpRight, Send } from 'lucide-react'
 
 /* ---------- Константы ---------- */
 
@@ -61,7 +61,7 @@ const NAV = [
   { label: 'Серии', target: 0.45 },
   { label: 'Услуги', target: 1 },
   { label: 'Обо мне', target: 0.7 },
-  { label: 'Контакты', target: 1 },
+  { label: 'Контакты', target: 'contacts' as const },
 ]
 
 /* ---------- Хелперы ---------- */
@@ -70,9 +70,18 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
 const formatPrice = (n: number) => `${n.toLocaleString('ru-RU')} ₽`
 
+/** Сколько пикселей прокрутки занимает сцена с видео (всё, что до блока контактов). */
+function stageScrollLength() {
+  const stage = document.getElementById('stage')
+  return stage ? Math.max(0, stage.offsetHeight - window.innerHeight) : 0
+}
+
 function scrollToFraction(fraction: number) {
-  const el = document.documentElement
-  window.scrollTo({ top: fraction * (el.scrollHeight - el.clientHeight), behavior: 'smooth' })
+  window.scrollTo({ top: fraction * stageScrollLength(), behavior: 'smooth' })
+}
+
+function scrollToContacts() {
+  document.getElementById('contacts')?.scrollIntoView({ behavior: 'smooth' })
 }
 
 /** Элемент исчезает (fade + blur + подъём), пока прогресс идёт от start к end. */
@@ -157,9 +166,8 @@ export default function App() {
   // Скролл → целевая доля
   useEffect(() => {
     const onScroll = () => {
-      const el = document.documentElement
-      const max = el.scrollHeight - el.clientHeight
-      targetScrollFractionRef.current = max > 0 ? clamp01(el.scrollTop / max) : 0
+      const max = stageScrollLength()
+      targetScrollFractionRef.current = max > 0 ? clamp01(window.scrollY / max) : 0
     }
     onScroll()
     const timeout = window.setTimeout(onScroll, 500)
@@ -228,7 +236,7 @@ export default function App() {
   const s = (start: number, end: number) => getStaggerStyle(progress, start, end)
 
   return (
-    <div className="relative h-[650vh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
+    <div className="relative bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
       {/* ---------- Видео-сцена ---------- */}
       <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
         <video
@@ -319,7 +327,9 @@ export default function App() {
                 <li key={item.label}>
                   <button
                     type="button"
-                    onClick={() => scrollToFraction(item.target)}
+                    onClick={() =>
+                      item.target === 'contacts' ? scrollToContacts() : scrollToFraction(item.target)
+                    }
                     className="group relative cursor-pointer py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]"
                   >
                     {item.label}
@@ -354,7 +364,7 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => scrollToFraction(1)}
+              onClick={scrollToContacts}
               className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
             >
               <span className="relative flex h-1.5 w-1.5">
@@ -458,32 +468,6 @@ export default function App() {
             Помогаю расслабиться в кадре, подсказываю с образом и сам нахожу места, где тишина
             звучит громче всего.
           </p>
-        </div>
-      </section>
-
-      {/* ---------- Контакты (финал, справа от шторки) ---------- */}
-      <section
-        className="fixed inset-y-0 right-0 z-20 hidden items-end p-12 lg:flex"
-        style={{
-          left: 648,
-          opacity: progress >= 0.9 ? 1 : 0,
-          visibility: progress >= 0.9 ? 'visible' : 'hidden',
-          transition: 'opacity 0.9s cubic-bezier(0.16,1,0.3,1), visibility 0.9s',
-        }}
-        aria-label="Контакты"
-      >
-        <div className="ml-auto w-full max-w-[360px]">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Контакты</p>
-          <p className="mt-3 font-serif text-4xl leading-none text-[#E8E6DC]">
-            Напиши мне —<br />
-            <em className="italic">договоримся о тишине</em>
-          </p>
-          <ul className="mt-8 divide-y divide-white/10 border-y border-white/10 text-[13px]">
-            <ContactRow label="Telegram" value="@vaaaaaag" href={TELEGRAM_PERSONAL} />
-            <ContactRow label="Instagram" value="@vaag.ph" href={INSTAGRAM} />
-            <ContactRow label="Канал" value="t.me/Vaag_ph" href={TELEGRAM_CHANNEL} />
-            <ContactRow label="Сайт" value="vaag-ph.ru" href={SITE} />
-          </ul>
         </div>
       </section>
 
@@ -616,30 +600,105 @@ export default function App() {
                   />
                 </a>
               </div>
-
-              {/* Контакты в шторке — для экранов, где правый блок не помещается */}
-              <p className="mt-5 text-center text-[10.5px] tracking-wide text-[#8E8B84] lg:hidden">
-                <a href={TELEGRAM_PERSONAL} target="_blank" rel="noreferrer" className="hover:text-[#121212]">
-                  @vaaaaaag
-                </a>
-                {' · '}
-                <a href={INSTAGRAM} target="_blank" rel="noreferrer" className="hover:text-[#121212]">
-                  ig @vaag.ph
-                </a>
-                {' · '}
-                <a href={TELEGRAM_CHANNEL} target="_blank" rel="noreferrer" className="hover:text-[#121212]">
-                  t.me/Vaag_ph
-                </a>
-                {' · '}
-                <a href={SITE} target="_blank" rel="noreferrer" className="hover:text-[#121212]">
-                  vaag-ph.ru
-                </a>
-              </p>
             </motion.div>
           </AnimatePresence>
         </div>
       </aside>
+
+      {/* Длина сцены: прокрутка по ней управляет видео и панелями */}
+      <div id="stage" className="h-[650vh]" aria-hidden="true" />
+
+      <ContactsSection />
     </div>
+  )
+}
+
+/* ---------- Контакты: отдельный экран после сцены ---------- */
+
+const CONTACTS = [
+  { label: 'Telegram', value: '@vaaaaaag', href: TELEGRAM_PERSONAL },
+  { label: 'Instagram', value: '@vaag.ph', href: INSTAGRAM },
+  { label: 'Канал', value: 't.me/Vaag_ph', href: TELEGRAM_CHANNEL },
+  { label: 'Сайт', value: 'vaag-ph.ru', href: SITE },
+]
+
+const reveal = {
+  initial: { opacity: 0, y: 40, filter: 'blur(10px)' },
+  whileInView: { opacity: 1, y: 0, filter: 'blur(0px)' },
+  viewport: { once: true, amount: 0.3 },
+}
+
+function ContactsSection() {
+  return (
+    <section
+      id="contacts"
+      className="relative z-40 flex min-h-[100svh] flex-col justify-between gap-16 border-t border-white/10 bg-[#020202] p-6 md:p-10 lg:p-12"
+      aria-labelledby="contacts-title"
+    >
+      <div className="flex items-start justify-between gap-6">
+        <img src={asset('logo.svg')} alt="VAAAAAAG" width={48} height={48} className="h-12 w-12" />
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="group flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50 transition-colors duration-300 hover:text-[#E8E6DC]"
+        >
+          Наверх
+          <ArrowUp className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5" strokeWidth={1.6} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
+        <motion.div
+          className="lg:col-span-7"
+          {...reveal}
+          transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Контакты</p>
+          <h2
+            id="contacts-title"
+            className="mt-5 font-serif uppercase leading-[0.88] text-[#E8E6DC]"
+            style={{ fontSize: 'clamp(2.5rem, 5.6vw, 7.5rem)' }}
+          >
+            Напиши мне —
+            <br />
+            <em className="italic">договоримся</em>
+            <br />
+            <em className="italic">о тишине</em>
+          </h2>
+          <p className="mt-8 max-w-[420px] text-[13px] leading-relaxed text-white/55">
+            Расскажи идею и удобные даты. Подберу локацию, время и пакет под настроение, которое хочется
+            сохранить.
+          </p>
+          <a
+            href={TELEGRAM_PERSONAL}
+            target="_blank"
+            rel="noreferrer"
+            className="group mt-8 inline-flex items-center gap-3 rounded-full border border-white/20 px-6 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
+          >
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E8E6DC] opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#E8E6DC] transition-colors duration-300 group-hover:bg-[#121212]" />
+            </span>
+            Написать в Telegram
+          </a>
+        </motion.div>
+
+        <motion.ul
+          className="divide-y divide-white/10 border-y border-white/10 text-[15px] lg:col-span-5"
+          {...reveal}
+          transition={{ duration: 1.1, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {CONTACTS.map((c) => (
+            <ContactRow key={c.label} {...c} />
+          ))}
+        </motion.ul>
+      </div>
+
+      <footer className="flex flex-col gap-2 text-[11px] text-white/35 sm:flex-row sm:justify-between">
+        <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
+        <span>Санкт-Петербург и область</span>
+      </footer>
+    </section>
   )
 }
 
@@ -650,7 +709,7 @@ function ContactRow({ label, value, href }: { label: string; value: string; href
         href={href}
         target="_blank"
         rel="noreferrer"
-        className="group flex items-center justify-between py-3.5 text-white/80 transition-colors duration-300 hover:text-[#E8E6DC]"
+        className="group flex items-center justify-between py-5 text-white/80 transition-colors duration-300 hover:text-[#E8E6DC]"
       >
         <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/40">{label}</span>
         <span className="flex items-center gap-2">

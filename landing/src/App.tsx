@@ -98,18 +98,12 @@ type Series = { id: string; title: string; description: string; photos: Photo[] 
 const SERIES: Series[] = [
   {
     id: 'forest',
+    // Название — временное, до ответа автора
     title: 'Лес и туман',
-    description: 'Лесные тропы, старые ели и рассеянный свет сквозь хвою.',
+    description: 'Одна съёмка — от лесной тропы и старых елей до каменных готических арок.',
     photos: [
       { id: 'forest-road', w: 2, h: 3, alt: 'Девушка на лесной дороге запрокинула голову к свету' },
       { id: 'forest-tree', w: 2, h: 3, alt: 'Портрет у ствола старой ели' },
-    ],
-  },
-  {
-    id: 'dark',
-    title: 'Тёмные образы',
-    description: 'Готические арки, камень и тень. Драматичный свет и образы на грани сказки.',
-    photos: [
       { id: 'dark-arch', w: 2, h: 3, alt: 'Кружение в белой юбке под каменной аркой' },
       { id: 'dark-door', w: 3, h: 2, alt: 'Портрет у готической двери склепа' },
     ],
@@ -941,34 +935,40 @@ function PortfolioSection({
         </div>
 
         <div className="flex flex-col gap-4 lg:items-end">
-          <div className="flex flex-wrap gap-1 rounded-full border border-white/10 p-1" role="tablist" aria-label="Серии">
-            {tabs.map((t) => {
-              const active = t.id === filter
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => onFilter(t.id)}
-                  className={`relative cursor-pointer rounded-full px-4 py-2 text-[11px] font-medium transition-colors duration-300 ${
-                    active ? 'text-[#121212]' : 'text-white/60 hover:text-[#E8E6DC]'
-                  }`}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="portfolio-tab"
-                      className="absolute inset-0 rounded-full bg-[#E8E6DC]"
-                      transition={{ type: 'spring', stiffness: 400, damping: 34 }}
-                    />
-                  )}
-                  <span className="relative">{t.title}</span>
-                </button>
-              )
-            })}
-          </div>
+          {SERIES.length > 1 && (
+            <div className="flex flex-wrap gap-1 rounded-full border border-white/10 p-1" role="tablist" aria-label="Серии">
+              {tabs.map((t) => {
+                const active = t.id === filter
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => onFilter(t.id)}
+                    className={`relative cursor-pointer rounded-full px-4 py-2 text-[11px] font-medium transition-colors duration-300 ${
+                      active ? 'text-[#121212]' : 'text-white/60 hover:text-[#E8E6DC]'
+                    }`}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="portfolio-tab"
+                        className="absolute inset-0 rounded-full bg-[#E8E6DC]"
+                        transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+                      />
+                    )}
+                    <span className="relative">{t.title}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
           <p className="min-h-[1.5em] max-w-[420px] text-[12.5px] leading-relaxed text-white/45 lg:text-right">
-            {current ? current.description : `${plural(SERIES.length, 'серия', 'серии', 'серий')} · ${shotsOf('all').length} фото`}
+            {SERIES.length === 1
+              ? `${SERIES[0].title} · ${SERIES[0].description} · ${shotsOf('all').length} фото`
+              : current
+                ? current.description
+                : `${plural(SERIES.length, 'серия', 'серии', 'серий')} · ${shotsOf('all').length} фото`}
           </p>
         </div>
       </div>

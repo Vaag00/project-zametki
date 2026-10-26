@@ -11,6 +11,7 @@ import {
   formatDateRu,
   formatPrice,
   LIMITS,
+  packageSummary,
   validateBooking,
   weekday,
   type BookingRequest,
@@ -35,6 +36,8 @@ const asset = (file: string) => `${import.meta.env.BASE_URL}${file}`
 const LERP_SCROLL = 0.05
 const LERP_VIDEO = 0.08
 
+const MIN_PRICE = Math.min(...PACKAGES.map((p) => p.price))
+
 const pkg = (...ids: PackageId[]) => PACKAGES.filter((p) => ids.includes(p.id))
 
 type Panel = {
@@ -45,13 +48,6 @@ type Panel = {
   image: string
   packages: Package[]
 }
-
-const FEATURES = [
-  'Консультация по подготовке',
-  'Подбор локаций и маршрута',
-  'Авторская обработка с художественной ретушью',
-  'Закрытый доступ к фото на облачном диске',
-]
 
 const PANELS: Record<1 | 2, Panel> = {
   1: {
@@ -121,7 +117,7 @@ const shotsOf = (filter: string): Shot[] =>
 
 const NAV = [
   { label: 'Портфолио', target: 'portfolio' as const },
-  { label: 'Услуги', target: 0.45 },
+  { label: 'Прайс', target: 'price' as const },
   { label: 'Обо мне', target: 0.7 },
   { label: 'Контакты', target: 'contacts' as const },
 ]
@@ -141,11 +137,12 @@ function plural(n: number, one: string, few: string, many: string) {
 
 
 /* ---------- Страницы ----------
- * Главная — без хеша. Портфолио — отдельная страница: #portfolio или #portfolio-<серия>.
+ * Главная — без хеша. Отдельные страницы: #portfolio (или #portfolio-<серия>) и #price.
  * Хеш, а не путь: так страница работает на любом хостинге и кнопка «Назад» в браузере тоже. */
-type Route = { page: 'home' } | { page: 'portfolio'; series: string }
+type Route = { page: 'home' } | { page: 'portfolio'; series: string } | { page: 'price' }
 
 function readRoute(): Route {
+  if (window.location.hash === '#price') return { page: 'price' }
   const m = window.location.hash.match(/^#portfolio(?:-([\w-]+))?$/)
   if (!m) return { page: 'home' }
   const series = m[1] && SERIES.some((x) => x.id === m[1]) ? m[1] : 'all'
@@ -154,6 +151,10 @@ function readRoute(): Route {
 
 function openPortfolio(seriesId?: string) {
   window.location.hash = seriesId ? `portfolio-${seriesId}` : 'portfolio'
+}
+
+function openPrice() {
+  window.location.hash = 'price'
 }
 
 function goHome() {
@@ -286,13 +287,12 @@ function InstagramIcon({ className }: { className?: string }) {
 export default function App() {
   const route = useRoute()
   useEffect(() => {
-    document.title = route.page === 'portfolio' ? 'Портфолио — VAAAAAAG' : 'VAAAAAAG — фоткает'
+    document.title =
+      route.page === 'portfolio' ? 'Портфолио — VAAAAAAG' : route.page === 'price' ? 'Прайс — VAAAAAAG' : 'VAAAAAAG — фоткает'
   }, [route.page])
-  return route.page === 'portfolio' ? (
-    <PortfolioPage key={route.series} initialSeries={route.series} />
-  ) : (
-    <Landing />
-  )
+  if (route.page === 'portfolio') return <PortfolioPage key={route.series} initialSeries={route.series} />
+  if (route.page === 'price') return <PricePage />
+  return <Landing />
 }
 
 function Landing() {
@@ -492,7 +492,9 @@ function Landing() {
                         ? setDialog({ section: 'contacts' })
                         : item.target === 'portfolio'
                           ? openPortfolio()
-                          : scrollToFraction(item.target)
+                          : item.target === 'price'
+                            ? openPrice()
+                            : scrollToFraction(item.target)
                     }
                     className="group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]"
                   >
@@ -640,7 +642,7 @@ function Landing() {
                 className="mt-4 font-serif text-2xl text-white transition-colors duration-500 group-hover:text-[#E8E6DC]"
                 style={s(0.2, 0.31)}
               >
-                от 6 500 ₽
+                от {formatPrice(MIN_PRICE)}
               </p>
             </div>
           </aside>
@@ -718,7 +720,7 @@ function Landing() {
 
               {/* Что входит */}
               <ul className="mt-5 grid grid-cols-1 gap-x-6 gap-y-1.5 text-[11.5px] text-[#73716C] sm:grid-cols-2">
-                {FEATURES.map((f) => (
+                {selectedPackage.features.map((f) => (
                   <li key={f} className="flex gap-2">
                     <span className="mt-[7px] h-px w-3 shrink-0 bg-[#8E8B84]" aria-hidden="true" />
                     {f}
@@ -773,7 +775,7 @@ function Landing() {
                           {formatPrice(selectedPackage.price)}
                         </span>
                         <span className="text-[11px] uppercase tracking-[0.18em] text-[#8E8B84]">
-                          {selectedPackage.photos}
+                          {packageSummary(selectedPackage)}
                         </span>
                       </motion.span>
                     </AnimatePresence>
@@ -810,6 +812,252 @@ function Landing() {
   )
 }
 
+/* ---------- Шапка и подвал отдельных страниц ---------- */
+
+function SubPageHeader({ current, onDialog }: { current: 'portfolio' | 'price'; onDialog: (d: DialogState) => void }) {
+  const navLink =
+    'group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] transition-colors duration-300'
+  const underline =
+    'absolute -bottom-0.5 left-0 h-px w-full bg-[#E8E6DC] transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]'
+  const items = [
+    { id: 'portfolio' as const, label: 'Портфолио', go: () => openPortfolio() },
+    { id: 'price' as const, label: 'Прайс', go: openPrice },
+  ]
+
+  return (
+    <header className="flex items-center justify-between gap-6 p-6 md:p-10 lg:p-12">
+      <div className="flex items-center gap-6">
+        <button type="button" onClick={goHome} aria-label="VAAAAAAG — на главную" className="cursor-pointer">
+          <img src={asset('logo.svg')} alt="" width={48} height={48} className="h-12 w-12" />
+        </button>
+        <button
+          type="button"
+          onClick={goHome}
+          className="group hidden cursor-pointer items-center gap-2 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50 transition-colors duration-300 hover:text-[#E8E6DC] lg:flex"
+        >
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-x-1" strokeWidth={1.6} />
+          На главную
+        </button>
+      </div>
+
+      <nav className="flex items-center gap-5 lg:gap-7">
+        <ul className="hidden items-center gap-5 md:flex xl:gap-8">
+          {items.map((item) =>
+            item.id === current ? (
+              <li key={item.id}>
+                <span className={`${navLink} cursor-default text-[#E8E6DC]`} aria-current="page">
+                  {item.label}
+                  <span className={`${underline} scale-x-100`} />
+                </span>
+              </li>
+            ) : (
+              <li key={item.id}>
+                <button type="button" onClick={item.go} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
+                  {item.label}
+                  <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
+                </button>
+              </li>
+            ),
+          )}
+          <li>
+            <button type="button" onClick={() => onDialog({ section: 'about' })} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
+              Обо мне
+              <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
+            </button>
+          </li>
+        </ul>
+        <span className="hidden h-5 w-px bg-white/15 md:block" aria-hidden="true" />
+        <div className="flex items-center gap-4">
+          <a href={INSTAGRAM} target="_blank" rel="noreferrer" aria-label="Instagram @vaag.ph" className="text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]">
+            <InstagramIcon className="h-[18px] w-[18px]" />
+          </a>
+          <a href={TELEGRAM_CHANNEL} target="_blank" rel="noreferrer" aria-label="Telegram-канал t.me/Vaag_ph" className="text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]">
+            <Send className="h-[17px] w-[17px]" strokeWidth={1.6} />
+          </a>
+        </div>
+        <BookButton onClick={() => onDialog({ section: 'booking' })} />
+      </nav>
+    </header>
+  )
+}
+
+function SubPageFooter() {
+  return (
+    <footer className="flex flex-col gap-2 border-t border-white/10 p-6 text-[11px] text-white/35 sm:flex-row sm:justify-between md:px-10 lg:px-12">
+      <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
+      <span>Санкт-Петербург и область</span>
+    </footer>
+  )
+}
+
+/* ---------- Прайс: отдельная страница ----------
+ * Пакеты и цены — в shared/booking.ts (их же использует запись). Здесь — то, что записи не касается. */
+
+const EVENTS = {
+  title: 'Свадьбы и события',
+  kinds: 'Свадьбы, дни рождения, семейные праздники, выпускные, крещения, корпоративы.',
+  features: [
+    'Репортаж без постановок: живые эмоции и детали',
+    'Формат, время и место зависят от события',
+    'Авторская обработка и доступ к фото на облачном диске',
+  ],
+  price: 'по договорённости',
+  note: 'Обсуждаем в личных сообщениях: задачи, место и количество гостей.',
+}
+
+const DISCOUNTS = {
+  lead: 'Возвращаетесь на съёмку: благодарю скидкой на следующую.',
+  rows: [
+    { label: 'Вторая съёмка', value: '−5%' },
+    { label: 'Третья съёмка и далее', value: '−10%' },
+  ],
+  note: 'Скидка не суммируется с акциями и спецпредложениями.',
+}
+
+function PricePage() {
+  const [dialog, setDialog] = useState<DialogState>(null)
+  const closeDialog = useCallback(() => setDialog(null), [])
+  const eyebrow = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40'
+  const rule = <span className="mt-6 block h-px w-14 bg-white/25" aria-hidden="true" />
+
+  return (
+    <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
+      <SubPageHeader current="price" onDialog={setDialog} />
+
+      <main className="flex flex-col gap-24 px-6 pb-24 pt-6 md:px-10 lg:px-12 lg:pt-10">
+        {/* Сводка, как в прайсе автора */}
+        <section aria-labelledby="price-title" className="grid grid-cols-1 gap-12 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <p className={eyebrow}>Фотосъёмки · Санкт-Петербург и область</p>
+            <h1
+              id="price-title"
+              className="mt-5 font-serif uppercase leading-[0.9] text-[#E8E6DC]"
+              style={{ fontSize: 'clamp(2.5rem, 5.6vw, 7.5rem)' }}
+            >
+              Прайс
+            </h1>
+            {rule}
+          </div>
+          <ol className="flex flex-col divide-y divide-white/10 border-y border-white/10 lg:col-span-7 lg:self-end">
+            {[...PACKAGES.map((p) => ({ id: p.id, name: p.name, sub: p.duration, price: formatPrice(p.price) })), {
+              id: 'events',
+              name: 'Свадебный',
+              sub: 'свадьбы и события',
+              price: EVENTS.price,
+            }].map((row, i) => (
+              <li key={row.id}>
+                <a href={`#price-${row.id}`} onClick={(e) => {
+                  e.preventDefault()
+                  document.getElementById(`price-${row.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }} className="group grid grid-cols-[2.5rem_1fr_auto] items-baseline gap-x-4 py-5 transition-colors">
+                  <span className="text-[11px] tabular-nums text-white/35">{String(i + 1).padStart(2, '0')}</span>
+                  <span>
+                    <span className="block font-serif text-2xl text-white/90 transition-colors duration-300 group-hover:text-[#E8E6DC] md:text-3xl">{row.name}</span>
+                    <span className="mt-1 block text-[12px] text-white/40">{row.sub}</span>
+                  </span>
+                  <span className={`font-serif text-right ${row.id === 'events' ? 'text-base text-white/60 md:text-lg' : 'text-2xl text-[#E8E6DC] md:text-3xl'}`}>
+                    {row.price}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Пакеты подробно */}
+        <section aria-label="Пакеты" className="grid grid-cols-1 gap-px overflow-hidden rounded-sm border border-white/10 bg-white/10 lg:grid-cols-3">
+          {PACKAGES.map((p, i) => (
+            <article key={p.id} id={`price-${p.id}`} className="flex scroll-mt-8 flex-col bg-[#020202] p-6 md:p-8">
+              <p className={eyebrow}>
+                Пакет {i + 1} · {p.duration}
+              </p>
+              <h2 className="mt-4 font-serif text-4xl leading-none text-white md:text-5xl">{p.name}</h2>
+              {rule}
+              {p.tagline && <p className="mt-6 text-[14px] leading-relaxed text-white/55">{p.tagline}</p>}
+              <ul className="mt-6 flex flex-col gap-2.5 text-[14px] leading-snug text-white/80">
+                {p.features.map((f) => (
+                  <li key={f} className="flex gap-3">
+                    <span className="text-white/35" aria-hidden="true">—</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-auto pt-10">
+                <p className="font-serif text-5xl leading-none text-[#E8E6DC]">{formatPrice(p.price)}</p>
+                {p.note && <p className="mt-3 text-[12px] leading-relaxed text-white/40">{p.note}</p>}
+                <button
+                  type="button"
+                  onClick={() => setDialog({ section: 'booking', packageId: p.id })}
+                  aria-haspopup="dialog"
+                  className="group mt-6 inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/20 px-5 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
+                >
+                  Записаться
+                  <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" strokeWidth={1.8} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+
+        {/* Свадьбы и события + скидки */}
+        <div className="grid grid-cols-1 gap-16 lg:grid-cols-12 lg:gap-8">
+          <section id="price-events" aria-labelledby="events-title" className="scroll-mt-8 lg:col-span-7">
+            <p className={eyebrow}>Пакет 4 · Другие события</p>
+            <h2 id="events-title" className="mt-4 font-serif text-4xl leading-none text-white md:text-5xl">
+              {EVENTS.title}
+            </h2>
+            {rule}
+            <p className="mt-6 max-w-[520px] text-[14px] leading-relaxed text-white/55">{EVENTS.kinds}</p>
+            <ul className="mt-6 flex max-w-[560px] flex-col gap-2.5 text-[14px] leading-snug text-white/80">
+              {EVENTS.features.map((f) => (
+                <li key={f} className="flex gap-3">
+                  <span className="text-white/35" aria-hidden="true">—</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-10 font-serif text-4xl leading-none text-[#E8E6DC]">{EVENTS.price}</p>
+            <p className="mt-3 max-w-[460px] text-[12px] leading-relaxed text-white/40">{EVENTS.note}</p>
+            <a
+              href={TELEGRAM_PERSONAL}
+              target="_blank"
+              rel="noreferrer"
+              className="group mt-6 inline-flex items-center gap-2 rounded-full border border-white/20 px-5 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
+            >
+              Обсудить в Telegram
+              <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" strokeWidth={1.8} />
+            </a>
+          </section>
+
+          <section aria-labelledby="discounts-title" className="lg:col-span-5">
+            <p className={eyebrow}>Постоянным клиентам</p>
+            <h2 id="discounts-title" className="mt-4 font-serif text-4xl leading-none text-white md:text-5xl">
+              Скидки
+            </h2>
+            {rule}
+            <p className="mt-6 text-[14px] leading-relaxed text-white/55">{DISCOUNTS.lead}</p>
+            <dl className="mt-6 divide-y divide-white/10 border-y border-white/10">
+              {DISCOUNTS.rows.map((r) => (
+                <div key={r.label} className="flex items-baseline justify-between py-4">
+                  <dt className="text-[14px] text-white/80">{r.label}</dt>
+                  <dd className="font-serif text-3xl tabular-nums text-[#E8E6DC]">{r.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-4 text-[12px] leading-relaxed text-white/40">{DISCOUNTS.note}</p>
+          </section>
+        </div>
+      </main>
+
+      <SubPageFooter />
+
+      <AnimatePresence>
+        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 /* ---------- Портфолио: отдельная страница ---------- */
 
 function PortfolioPage({ initialSeries }: { initialSeries: string }) {
@@ -819,76 +1067,15 @@ function PortfolioPage({ initialSeries }: { initialSeries: string }) {
   const [dialog, setDialog] = useState<DialogState>(null)
   const closeDialog = useCallback(() => setDialog(null), [])
 
-  const navLink =
-    'group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] transition-colors duration-300'
-  const underline =
-    'absolute -bottom-0.5 left-0 h-px w-full bg-[#E8E6DC] transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]'
-
   return (
     <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
-      <header className="flex items-center justify-between gap-6 p-6 md:p-10 lg:p-12">
-        <div className="flex items-center gap-6">
-          <button type="button" onClick={goHome} aria-label="VAAAAAAG — на главную" className="cursor-pointer">
-            <img src={asset('logo.svg')} alt="" width={48} height={48} className="h-12 w-12" />
-          </button>
-          <button
-            type="button"
-            onClick={goHome}
-            className="group hidden cursor-pointer items-center gap-2 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50 sm:flex transition-colors duration-300 hover:text-[#E8E6DC]"
-          >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-x-1" strokeWidth={1.6} />
-            На главную
-          </button>
-        </div>
-
-        <nav className="flex items-center gap-5 lg:gap-7">
-          <ul className="hidden items-center gap-5 md:flex xl:gap-8">
-            <li>
-              <span className={`${navLink} cursor-default text-[#E8E6DC]`} aria-current="page">
-                Портфолио
-                <span className={`${underline} scale-x-100`} />
-              </span>
-            </li>
-            <li>
-              <button type="button" onClick={() => setDialog({ section: 'about' })} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
-                Обо мне
-                <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
-              </button>
-            </li>
-          </ul>
-          <span className="hidden h-5 w-px bg-white/15 md:block" aria-hidden="true" />
-          <div className="flex items-center gap-4">
-            <a href={INSTAGRAM} target="_blank" rel="noreferrer" aria-label="Instagram @vaag.ph" className="text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]">
-              <InstagramIcon className="h-[18px] w-[18px]" />
-            </a>
-            <a href={TELEGRAM_CHANNEL} target="_blank" rel="noreferrer" aria-label="Telegram-канал t.me/Vaag_ph" className="text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]">
-              <Send className="h-[17px] w-[17px]" strokeWidth={1.6} />
-            </a>
-          </div>
-          <button
-            type="button"
-            onClick={() => setDialog({ section: 'booking' })}
-            aria-haspopup="dialog"
-            className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E8E6DC] opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#E8E6DC] transition-colors duration-300 group-hover:bg-[#121212]" />
-            </span>
-            <span className="hidden sm:inline">Записаться</span>
-            <span className="sm:hidden">Запись</span>
-          </button>
-        </nav>
-      </header>
+      <SubPageHeader current="portfolio" onDialog={setDialog} />
 
       <main>
         <PortfolioSection filter={filter} onFilter={setFilter} onOpen={(shots, index) => setLightbox({ shots, index })} />
       </main>
 
-      <footer className="flex flex-col gap-2 border-t border-white/10 p-6 text-[11px] text-white/35 sm:flex-row sm:justify-between md:px-10 lg:px-12">
-        <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
-        <span>Санкт-Петербург и область</span>
-      </footer>
+      <SubPageFooter />
 
       <AnimatePresence>
         {lightbox && (
@@ -1537,7 +1724,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
                     {active && <Check className="h-3 w-3 text-[#121212]" strokeWidth={3} />}
                   </span>
                 </span>
-                <span className="text-[11px] uppercase tracking-[0.16em] text-white/45">{p.photos}</span>
+                <span className="text-[11px] uppercase tracking-[0.16em] text-white/45">{packageSummary(p)}</span>
                 <span className="mt-2 font-serif text-2xl text-[#E8E6DC]">{formatPrice(p.price)}</span>
               </label>
             )
@@ -1713,7 +1900,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
       {/* Итог и отправка */}
       <div className="flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-[13px] text-white/60" aria-live="polite">
-          <span className="text-white">{selectedPkg.name}</span> · {selectedPkg.photos} · <span className="font-serif text-lg text-[#E8E6DC]">{formatPrice(selectedPkg.price)}</span>
+          <span className="text-white">{selectedPkg.name}</span> · {packageSummary(selectedPkg)} · <span className="font-serif text-lg text-[#E8E6DC]">{formatPrice(selectedPkg.price)}</span>
           <br />
           {date ? formatDateRu(date) : 'дата не выбрана'}
           {time ? `, ${time}` : date ? ', время не выбрано' : ''}

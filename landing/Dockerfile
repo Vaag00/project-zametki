@@ -10,7 +10,7 @@ COPY src ./src
 COPY shared ./shared
 COPY public ./public
 # Адрес сайта для превью ссылок — из SITE_URL в .env (передаёт docker-compose.yml)
-ARG SITE_URL=https://vaag-ph.ru
+ARG SITE_URL=https://vaag-ph.duckdns.org
 ENV VITE_SITE_URL=$SITE_URL
 RUN npm run build
 

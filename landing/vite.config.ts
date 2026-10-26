@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // Адрес сайта для превью ссылок и контактов. На сервере берётся из SITE_URL в .env (см. Dockerfile)
-process.env.VITE_SITE_URL = (process.env.VITE_SITE_URL || 'https://vaag-ph.ru').replace(/\/$/, '')
+process.env.VITE_SITE_URL = (process.env.VITE_SITE_URL || 'https://vaag-ph.duckdns.org').replace(/\/$/, '')
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

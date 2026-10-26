@@ -1,5 +1,5 @@
 # Сайт фотографа (landing/) на GitHub Pages — бесплатно, без сервера.
-# Если бот в Яндекс Облаке уже развёрнут (секрет YC_SA_KEY и функция vaag-bot есть), запись на сайте идёт через него:
+# Если бот в Cloudflare уже развёрнут (секреты CLOUDFLARE_* есть и Worker vaag-bot отвечает), запись на сайте идёт через него:
 # заявки сохраняются, занятые окошки скрываются, вам приходит сообщение в Telegram.
 # Иначе — демо-режим: запись отправляет готовый текст заявки в Telegram. Админки на GitHub Pages нет.
 # Собранный сайт кладётся в ветку gh-pages — из неё GitHub Pages и показывает сайт.
@@ -34,14 +34,18 @@ jobs:
           cache-dependency-path: landing/package-lock.json
       - name: Адрес бота
         env:
-          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           url=""
-          if [ -n "$YC_SA_KEY" ]; then
-            bot/deploy/yc_login.sh
-            export PATH="$HOME/yc/bin:$PATH"
-            url=$(yc serverless function get --name vaag-bot --format json 2>/dev/null \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("http_invoke_url", ""))' || true)
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            sub=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).result.subdomain)}catch{}})")
+            # Бот развёрнут, если его Worker отвечает
+            if [ -n "$sub" ] && curl -sSf -m 15 "https://vaag-bot.$sub.workers.dev/?r=content" -o /dev/null; then
+              url="https://vaag-bot.$sub.workers.dev/"
+            fi
           fi
           if [ -n "$url" ]; then
             echo "Запись через бота: $url"

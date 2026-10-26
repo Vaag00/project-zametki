@@ -3,7 +3,7 @@
 Сайт фотографа с онлайн-записью, админкой и ботом Telegram.
 
 **Как запустить на своём сервере — [DEPLOY.md](DEPLOY.md).**
-**Без сервера: сайт на GitHub Pages + бот в Яндекс Облаке — [bot/README.md](bot/README.md).**
+**Без сервера: сайт на GitHub Pages + бот в Cloudflare — [worker/README.md](worker/README.md).**
 
 ## Что внутри
 
@@ -14,7 +14,7 @@
 | Сервер | `server/` | Python, FastAPI, SQLite. API, база, обработка фото, бот Telegram, резервные копии. Тесты — `server/tests` |
 | Общее | `shared/booking.ts` | Даты, проверка заявки, пакеты и расписание по умолчанию |
 | Запуск | `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `.env.example` | Один образ (сайт + сервер), Caddy с автоматическим HTTPS |
-| Бот без сервера | `bot/` → [bot/README.md](bot/README.md) | Бот Telegram и запись в Яндекс Облаке (Cloud Functions + YDB) для сайта на GitHub Pages: запись в боте, заявки с кнопками, закрытые дни |
+| Бот без сервера | `worker/` → [worker/README.md](worker/README.md) | Бот Telegram и запись в Cloudflare (Worker + D1) для сайта на GitHub Pages: запись в боте, заявки с кнопками, закрытые дни |
 
 Пакеты, цены, расписание и портфолио хранятся в базе и меняются в админке.
 Первичное наполнение — `server/app/seed.json` и фото из `public/portfolio`.

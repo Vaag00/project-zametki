@@ -53,11 +53,11 @@ const PANELS: Record<1 | 2, Panel> = {
   1: {
     id: 1,
     category: 'Серия · Лес и туман',
-    title: 'Минимальный и Стандартный пакет',
+    title: 'Минимальный, Стандартный и Максимальный',
     description:
       'Неспешная прогулка по лесу или берегу залива на рассвете. Туман, влажный воздух, мягкий свет — и ты в нём.',
     image: asset('series1.jpg'),
-    packages: pkg('minimal', 'standard'),
+    packages: pkg('minimal', 'standard', 'maximal'),
   },
   2: {
     id: 2,
@@ -786,7 +786,7 @@ function Landing() {
                   type="button"
                   onClick={() => setDialog({ section: 'booking', packageId: selectedPackage.id })}
                   aria-haspopup="dialog"
-                  className="group inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-[#121212] px-6 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#FAF9F5] transition-colors duration-300 hover:bg-[#2a2a28]"
+                  className="group inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#121212] px-6 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#FAF9F5] transition-colors duration-300 hover:bg-[#2a2a28]"
                 >
                   Забронировать съёмку
                   <ArrowUpRight

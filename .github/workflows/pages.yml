@@ -41,5 +41,5 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: landing/dist
           publish_branch: gh-pages
-          # Свой домен: когда DuckDNS будет указывать на GitHub, раскомментируйте строку ниже
-          # cname: vaag-ph.duckdns.org
+          # Свой домен (DuckDNS указывает на GitHub Pages 185.199.108.153)
+          cname: vaag-ph.duckdns.org

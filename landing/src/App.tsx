@@ -1,6 +1,6 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Check, Copy, Send, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Check, Copy, Menu, Send, X } from 'lucide-react'
 import {
   PACKAGES,
   SLOT_TIMES,
@@ -248,9 +248,7 @@ function useModal(
   onKeyRef.current = onKey
   useEffect(() => {
     if (!active) return
-    const root = document.documentElement
-    const prevOverflow = root.style.overflow
-    root.style.overflow = 'hidden'
+    lockScroll()
     focusRef.current?.focus()
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -258,10 +256,22 @@ function useModal(
     }
     window.addEventListener('keydown', handler)
     return () => {
-      root.style.overflow = prevOverflow
+      unlockScroll()
       window.removeEventListener('keydown', handler)
     }
   }, [active, onClose, focusRef])
+}
+
+/**
+ * Блокировка прокрутки страницы под окнами — счётчиком: из меню открывается другое окно,
+ * и меню закрывается (с анимацией) уже после — прокрутка не должна разблокироваться раньше времени.
+ */
+let scrollLocks = 0
+function lockScroll() {
+  if (scrollLocks++ === 0) document.documentElement.style.overflow = 'hidden'
+}
+function unlockScroll() {
+  if (--scrollLocks === 0) document.documentElement.style.overflow = ''
 }
 
 /** Сколько пикселей прокрутки занимает сцена с видео (всё, что до блока контактов). */
@@ -380,6 +390,8 @@ function Landing() {
   const [progress, setProgress] = useState(0)
   const [dialog, setDialog] = useState<DialogState>(null)
   const closeDialog = useCallback(() => setDialog(null), [])
+  const [menuOpen, setMenuOpen] = useState(false)
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
 
   // Карточка на первом экране листает серии; на наведении — пауза
   const [heroSeries, setHeroSeries] = useState(0)
@@ -398,6 +410,27 @@ function Landing() {
   const video1Ref = useRef<HTMLVideoElement>(null)
   const video2Ref = useRef<HTMLVideoElement>(null)
   const rafRef = useRef(0)
+
+  // iPhone не грузит кадры видео, пока его не запустить: коротко play → pause.
+  // В режиме энергосбережения play запрещён до касания — тогда пробуем при первом касании/прокрутке.
+  useEffect(() => {
+    const wake = () => {
+      for (const v of [video1Ref.current, video2Ref.current]) {
+        if (!v || v.readyState >= 2) continue
+        v.play()
+          .then(() => v.pause())
+          .catch(() => {})
+      }
+    }
+    wake()
+    const opts = { once: true, passive: true } as const
+    window.addEventListener('touchstart', wake, opts)
+    window.addEventListener('scroll', wake, opts)
+    return () => {
+      window.removeEventListener('touchstart', wake)
+      window.removeEventListener('scroll', wake)
+    }
+  }, [])
 
   // Скролл → целевая доля
   useEffect(() => {
@@ -480,22 +513,26 @@ function Landing() {
           muted
           playsInline
           preload="auto"
+          poster={asset('video1-poster.jpg')}
           className="absolute inset-0 h-full w-full object-cover transition-opacity duration-700"
           style={{ opacity: firstVideoVisible ? 0.85 : 0 }}
         >
-          <source src={asset('video1.webm')} type="video/webm" />
+          {/* MP4 первым: Safari на iPhone ненадёжно играет WebM и не переходит к следующему источнику */}
           <source src={asset('video1.mp4')} type="video/mp4" />
+          <source src={asset('video1.webm')} type="video/webm" />
         </video>
         <video
           ref={video2Ref}
           muted
           playsInline
           preload="auto"
+          poster={asset('video2-poster.jpg')}
           className="absolute inset-0 h-full w-full object-cover transition-opacity duration-700"
           style={{ opacity: firstVideoVisible ? 0 : 0.85 }}
         >
-          <source src={asset('video2.webm')} type="video/webm" />
+          {/* MP4 первым: Safari на iPhone ненадёжно играет WebM и не переходит к следующему источнику */}
           <source src={asset('video2.mp4')} type="video/mp4" />
+          <source src={asset('video2.webm')} type="video/webm" />
         </video>
         <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-[#020202] via-[#020202]/60 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-[#020202] via-[#020202]/70 to-transparent" />
@@ -518,9 +555,25 @@ function Landing() {
       </div>
 
       {/* ---------- Кнопка записи: всегда сверху справа ---------- */}
-      <div className="fixed right-6 top-6 z-50 md:right-10 md:top-10 lg:right-12 lg:top-12">
+      <div className="fixed right-6 top-6 z-50 flex items-center gap-2 md:right-10 md:top-10 lg:right-12 lg:top-12">
+        <MenuButton onClick={() => setMenuOpen(true)} />
         <BookButton onClick={() => setDialog({ section: 'booking' })} />
       </div>
+
+      <AnimatePresence>
+        {menuOpen && (
+          <MobileMenu
+            onClose={closeMenu}
+            items={[
+              { label: 'Портфолио', onClick: () => openPortfolio() },
+              { label: 'Прайс', onClick: openPrice },
+              { label: 'Обо мне', onClick: () => setDialog({ section: 'about' }) },
+              { label: 'Контакты', onClick: () => setDialog({ section: 'contacts' }) },
+            ]}
+            onBook={() => setDialog({ section: 'booking' })}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ---------- Прогресс-бар ---------- */}
       <div
@@ -588,7 +641,7 @@ function Landing() {
 
             <span className="hidden h-5 w-px bg-white/15 md:block" aria-hidden="true" />
 
-            <div className="flex items-center gap-4">
+            <div className="hidden items-center gap-4 sm:flex">
               <a
                 href={INSTAGRAM}
                 target="_blank"
@@ -609,8 +662,11 @@ function Landing() {
               </a>
             </div>
 
-            {/* Место под кнопку записи: сама кнопка закреплена сверху и не исчезает при прокрутке */}
-            <BookButton placeholder />
+            {/* Место под кнопки меню и записи: сами кнопки закреплены сверху и не исчезают при прокрутке */}
+            <span className="flex items-center gap-2">
+              <MenuButton placeholder />
+              <BookButton placeholder />
+            </span>
           </nav>
         </header>
 
@@ -896,6 +952,8 @@ function Landing() {
 /* ---------- Шапка и подвал отдельных страниц ---------- */
 
 function SubPageHeader({ current, onDialog }: { current?: 'portfolio' | 'price'; onDialog: (d: DialogState) => void }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
   const navLink =
     'group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] transition-colors duration-300'
   const underline =
@@ -948,7 +1006,7 @@ function SubPageHeader({ current, onDialog }: { current?: 'portfolio' | 'price';
           </li>
         </ul>
         <span className="hidden h-5 w-px bg-white/15 md:block" aria-hidden="true" />
-        <div className="flex items-center gap-4">
+        <div className="hidden items-center gap-4 sm:flex">
           <a href={INSTAGRAM} target="_blank" rel="noreferrer" aria-label="Instagram @vaag.ph" className="text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]">
             <InstagramIcon className="h-[18px] w-[18px]" />
           </a>
@@ -956,8 +1014,26 @@ function SubPageHeader({ current, onDialog }: { current?: 'portfolio' | 'price';
             <Send className="h-[17px] w-[17px]" strokeWidth={1.6} />
           </a>
         </div>
-        <BookButton onClick={() => onDialog({ section: 'booking' })} />
+        <div className="flex items-center gap-2">
+          <MenuButton onClick={() => setMenuOpen(true)} />
+          <BookButton onClick={() => onDialog({ section: 'booking' })} />
+        </div>
       </nav>
+      <AnimatePresence>
+        {menuOpen && (
+          <MobileMenu
+            onClose={closeMenu}
+            items={[
+              { label: 'Главная', onClick: goHome },
+              { label: 'Портфолио', onClick: () => openPortfolio(), current: current === 'portfolio' },
+              { label: 'Прайс', onClick: openPrice, current: current === 'price' },
+              { label: 'Обо мне', onClick: () => onDialog({ section: 'about' }) },
+              { label: 'Контакты', onClick: () => onDialog({ section: 'contacts' }) },
+            ]}
+            onBook={() => onDialog({ section: 'booking' })}
+          />
+        )}
+      </AnimatePresence>
     </header>
   )
 }
@@ -2412,6 +2488,96 @@ function CopyButton({ text }: { text: string }) {
       {copied ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.8} />}
       {copied ? 'Скопировано' : 'Скопировать текст'}
     </button>
+  )
+}
+
+/** Кнопка меню — только на телефонах (на широком экране пункты меню видны в шапке). */
+function MenuButton({ onClick, placeholder = false }: { onClick?: () => void; placeholder?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Меню"
+      aria-haspopup="dialog"
+      {...(placeholder ? { 'aria-hidden': true, tabIndex: -1, disabled: true } : {})}
+      className={`flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full border border-white/25 bg-[#020202]/70 text-white shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors duration-300 hover:border-[#E8E6DC] hover:text-[#E8E6DC] md:hidden ${
+        placeholder ? 'invisible' : ''
+      }`}
+    >
+      <Menu className="h-4 w-4" strokeWidth={1.6} />
+    </button>
+  )
+}
+
+type MenuItem = { label: string; onClick: () => void; current?: boolean }
+
+/** Меню на весь экран для телефона. */
+function MobileMenu({ items, onClose, onBook }: { items: MenuItem[]; onClose: () => void; onBook: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useModal(true, onClose, closeRef)
+  const go = (fn: () => void) => () => {
+    onClose()
+    fn()
+  }
+  return (
+    <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Меню"
+      className="fixed inset-0 z-[65] flex flex-col bg-[#020202] p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="flex items-center justify-between">
+        <img src={asset('logo.svg')} alt="VAAAAAAG" width={48} height={48} className="h-12 w-12" />
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          className="flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60 hover:text-[#E8E6DC]"
+        >
+          Закрыть <X className="h-4 w-4" strokeWidth={1.6} />
+        </button>
+      </div>
+      <nav className="mt-14 flex flex-1 flex-col gap-2">
+        {items.map((item, i) => (
+          <motion.button
+            key={item.label}
+            type="button"
+            onClick={go(item.onClick)}
+            aria-current={item.current ? 'page' : undefined}
+            className={`cursor-pointer self-start py-1 text-left font-serif text-[2.6rem] uppercase leading-none transition-colors ${
+              item.current ? 'text-[#E8E6DC] italic' : 'text-white/85 hover:text-[#E8E6DC]'
+            }`}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 * i, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {item.label}
+          </motion.button>
+        ))}
+        <button
+          type="button"
+          onClick={go(onBook)}
+          className="mt-8 inline-flex cursor-pointer items-center gap-3 self-start rounded-full bg-[#E8E6DC] px-6 py-3.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#121212]"
+        >
+          Записаться <ArrowUpRight className="h-4 w-4" strokeWidth={1.8} />
+        </button>
+      </nav>
+      <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-white/10 pt-5 text-[13px] text-white/60">
+        <a href={INSTAGRAM} target="_blank" rel="noreferrer" className="hover:text-[#E8E6DC]">
+          Instagram @vaag.ph
+        </a>
+        <a href={TELEGRAM_PERSONAL} target="_blank" rel="noreferrer" className="hover:text-[#E8E6DC]">
+          Telegram @vaaaaaag
+        </a>
+        <a href={TELEGRAM_CHANNEL} target="_blank" rel="noreferrer" className="hover:text-[#E8E6DC]">
+          Канал t.me/Vaag_ph
+        </a>
+      </div>
+    </motion.div>
   )
 }
 

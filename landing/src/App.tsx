@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Check, Copy, Send, X } from 'lucide-react'
 import {
@@ -13,14 +13,22 @@ import {
   LIMITS,
   packageSummary,
   validateBooking,
+  validateContactFields,
   weekday,
   type BookingRequest,
   type Package,
   type PackageId,
 } from '../shared/booking'
 
-/** Адрес сервера записи (booking-worker). Пусто — запись работает в демо-режиме: заявку клиент отправляет сам в Telegram. */
-const BOOKING_API = (import.meta.env.VITE_BOOKING_API as string | undefined)?.replace(/\/$/, '')
+/**
+ * Адрес API сервера (server/). По умолчанию /api на том же сайте.
+ * VITE_DEMO=1 — сборка без сервера (превью): данные по умолчанию, запись в демо-режиме.
+ */
+const API: string | null =
+  import.meta.env.VITE_DEMO === '1' ? null : ((import.meta.env.VITE_API_BASE as string | undefined) ?? '/api').replace(/\/$/, '')
+
+/** Админка — отдельный файл, грузится только при входе в неё. */
+const AdminPage = lazy(() => import('./Admin'))
 
 /* ---------- Константы ---------- */
 
@@ -36,9 +44,6 @@ const asset = (file: string) => `${import.meta.env.BASE_URL}${file}`
 const LERP_SCROLL = 0.05
 const LERP_VIDEO = 0.08
 
-const MIN_PRICE = Math.min(...PACKAGES.map((p) => p.price))
-
-const pkg = (...ids: PackageId[]) => PACKAGES.filter((p) => ids.includes(p.id))
 
 type Panel = {
   id: 1 | 2
@@ -49,25 +54,30 @@ type Panel = {
   packages: Package[]
 }
 
-const PANELS: Record<1 | 2, Panel> = {
+/** Панели на главной: первая — все пакеты, вторая — самый полный (дорогой). */
+function buildPanels(packages: Package[]): Record<1 | 2, Panel> {
+  const list = packages.length ? packages : PACKAGES
+  const top = list.reduce((a, b) => (b.price > a.price ? b : a))
+  return {
   1: {
     id: 1,
     category: 'Серия · Лес и туман',
-    title: 'Минимальный, Стандартный и Максимальный',
+    title: list.length === 3 ? list.map((p) => p.name).join(', ').replace(/, ([^,]*)$/, ' и $1') : 'Пакеты съёмки',
     description:
       'Неспешная прогулка по лесу или берегу залива на рассвете. Туман, влажный воздух, мягкий свет — и ты в нём.',
     image: asset('series1.jpg'),
-    packages: pkg('minimal', 'standard', 'maximal'),
+    packages: list,
   },
   2: {
     id: 2,
     category: 'Серия · Тёмные образы',
-    title: 'Максимальный пакет',
+    title: `${top.name} пакет`,
     description:
       'Длинная съёмка с несколькими образами и локациями. Глубокие тени, вода, драматичный свет — история целиком.',
     image: asset('series2.jpg'),
-    packages: pkg('maximal'),
+    packages: [top],
   },
+}
 }
 
 /** Рассказ о себе — текст автора. Новые абзацы просто добавляются в массив `paragraphs`. */
@@ -85,35 +95,73 @@ const ABOUT = {
 }
 
 /* ---------- Портфолио ----------
- * Новое фото: положить public/portfolio/<id>.jpg (до 1800 px) и <id>-sm.jpg (до 900 px)
- * и добавить строку в нужную серию. Новая серия — новый объект в SERIES.
+ * На работающем сайте серии и фото приходят с сервера — их добавляют в админке.
+ * DEFAULT_SERIES — запасной вариант для превью без сервера.
  * Первое фото серии — её обложка на первом экране, поэтому лучше вертикальное. */
-type Photo = { id: string; w: number; h: number; alt: string }
+type Photo = { id: string | number; src: string; srcSm: string; w: number; h: number; alt: string }
 type Series = { id: string; title: string; description: string; photos: Photo[] }
 
-const SERIES: Series[] = [
+const bundled = (id: string, w: number, h: number, alt: string): Photo => ({
+  id,
+  src: asset(`portfolio/${id}.jpg`),
+  srcSm: asset(`portfolio/${id}-sm.jpg`),
+  w,
+  h,
+  alt,
+})
+
+const DEFAULT_SERIES: Series[] = [
   {
     id: 'forest',
     // Название — временное, до ответа автора
     title: 'Лес и туман',
     description: 'Одна съёмка — от лесной тропы и старых елей до каменных готических арок.',
     photos: [
-      { id: 'forest-road', w: 2, h: 3, alt: 'Девушка на лесной дороге запрокинула голову к свету' },
-      { id: 'forest-tree', w: 2, h: 3, alt: 'Портрет у ствола старой ели' },
-      { id: 'dark-arch', w: 2, h: 3, alt: 'Кружение в белой юбке под каменной аркой' },
-      { id: 'forest-road-warm', w: 2, h: 3, alt: 'Лесная дорога, тёплый вариант обработки' },
-      { id: 'dark-door', w: 3, h: 2, alt: 'Портрет у готической двери склепа' },
+      bundled('forest-road', 2, 3, 'Девушка на лесной дороге запрокинула голову к свету'),
+      bundled('forest-tree', 2, 3, 'Портрет у ствола старой ели'),
+      bundled('dark-arch', 2, 3, 'Кружение в белой юбке под каменной аркой'),
+      bundled('forest-road-warm', 2, 3, 'Лесная дорога, тёплый вариант обработки'),
+      bundled('dark-door', 3, 2, 'Портрет у готической двери склепа'),
     ],
   },
 ]
 
-const photoSrc = (id: string, small = false) => asset(`portfolio/${id}${small ? '-sm' : ''}.jpg`)
-
 type Shot = Photo & { series: Series }
-const shotsOf = (filter: string): Shot[] =>
-  SERIES.filter((x) => filter === 'all' || x.id === filter).flatMap((x) =>
+const shotsOf = (series: Series[], filter: string): Shot[] =>
+  series.filter((x) => filter === 'all' || x.id === filter).flatMap((x) =>
     x.photos.map((photo) => ({ ...photo, series: x })),
   )
+
+/* ---------- Данные с сервера ---------- */
+
+type Content = { packages: Package[]; series: Series[]; telegramBot: string | null; live: boolean }
+
+const DEFAULT_CONTENT: Content = { packages: PACKAGES, series: DEFAULT_SERIES, telegramBot: null, live: false }
+
+const ContentContext = createContext<Content>(DEFAULT_CONTENT)
+const useContent = () => useContext(ContentContext)
+
+/** Пакеты и портфолио с сервера; без сервера остаются значения по умолчанию. */
+function useServerContent(): Content {
+  const [content, setContent] = useState(DEFAULT_CONTENT)
+  useEffect(() => {
+    if (!API) return
+    fetch(`${API}/content`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: Omit<Content, 'live'>) =>
+        setContent({
+          packages: data.packages.length ? data.packages : PACKAGES,
+          series: data.series,
+          telegramBot: data.telegramBot,
+          live: true,
+        }),
+      )
+      .catch(() => {
+        /* сервер недоступен — работаем на данных по умолчанию */
+      })
+  }, [])
+  return content
+}
 
 const NAV = [
   { label: 'Портфолио', target: 'portfolio' as const },
@@ -137,17 +185,26 @@ function plural(n: number, one: string, few: string, many: string) {
 
 
 /* ---------- Страницы ----------
- * Главная — без хеша. Отдельные страницы: #portfolio (или #portfolio-<серия>) и #price.
+ * Главная — без хеша. Отдельные страницы: #portfolio (или #portfolio-<серия>), #price, #privacy,
+ * #booking-<код> (статус заявки для клиента) и #admin (админка).
  * Хеш, а не путь: так страница работает на любом хостинге и кнопка «Назад» в браузере тоже. */
-type Route = { page: 'home' } | { page: 'portfolio'; series: string } | { page: 'price' } | { page: 'privacy' }
+type Route =
+  | { page: 'home' }
+  | { page: 'portfolio'; series: string }
+  | { page: 'price' }
+  | { page: 'privacy' }
+  | { page: 'admin' }
+  | { page: 'booking'; token: string }
 
 function readRoute(): Route {
   if (window.location.hash === '#price') return { page: 'price' }
   if (window.location.hash === '#privacy') return { page: 'privacy' }
+  if (window.location.hash === '#admin') return { page: 'admin' }
+  const b = window.location.hash.match(/^#booking-([\w-]+)$/)
+  if (b) return { page: 'booking', token: b[1] }
   const m = window.location.hash.match(/^#portfolio(?:-([\w-]+))?$/)
   if (!m) return { page: 'home' }
-  const series = m[1] && SERIES.some((x) => x.id === m[1]) ? m[1] : 'all'
-  return { page: 'portfolio', series }
+  return { page: 'portfolio', series: m[1] ?? 'all' }
 }
 
 function openPortfolio(seriesId?: string) {
@@ -287,22 +344,37 @@ function InstagramIcon({ className }: { className?: string }) {
 
 export default function App() {
   const route = useRoute()
+  const content = useServerContent()
   useEffect(() => {
-    document.title =
-      {
-        portfolio: 'Портфолио — VAAAAAAG',
-        price: 'Прайс — VAAAAAAG',
-        privacy: 'Политика конфиденциальности — VAAAAAAG',
-        home: 'VAAAAAAG — фоткает',
-      }[route.page]
+    document.title = {
+      portfolio: 'Портфолио — VAAAAAAG',
+      price: 'Прайс — VAAAAAAG',
+      privacy: 'Политика конфиденциальности — VAAAAAAG',
+      admin: 'Админка — VAAAAAAG',
+      booking: 'Ваша заявка — VAAAAAAG',
+      home: 'VAAAAAAG — фоткает',
+    }[route.page]
   }, [route.page])
-  if (route.page === 'portfolio') return <PortfolioPage key={route.series} initialSeries={route.series} />
-  if (route.page === 'price') return <PricePage />
-  if (route.page === 'privacy') return <PrivacyPage />
-  return <Landing />
+
+  let page
+  if (route.page === 'portfolio') page = <PortfolioPage key={route.series} initialSeries={route.series} />
+  else if (route.page === 'price') page = <PricePage />
+  else if (route.page === 'privacy') page = <PrivacyPage />
+  else if (route.page === 'booking') page = <BookingStatusPage token={route.token} />
+  else if (route.page === 'admin')
+    page = (
+      <Suspense fallback={<div className="min-h-[100svh] bg-[#020202]" />}>
+        <AdminPage api={API} />
+      </Suspense>
+    )
+  else page = <Landing />
+  return <ContentContext.Provider value={content}>{page}</ContentContext.Provider>
 }
 
 function Landing() {
+  const { packages, series } = useContent()
+  const PANELS = useMemo(() => buildPanels(packages), [packages])
+  const heroList = series.length ? series : DEFAULT_SERIES
   const [progress, setProgress] = useState(0)
   const [dialog, setDialog] = useState<DialogState>(null)
   const closeDialog = useCallback(() => setDialog(null), [])
@@ -311,13 +383,13 @@ function Landing() {
   const [heroSeries, setHeroSeries] = useState(0)
   const heroPausedRef = useRef(false)
   useEffect(() => {
-    if (SERIES.length < 2) return
+    if (heroList.length < 2) return
     const timer = window.setInterval(() => {
-      if (!heroPausedRef.current) setHeroSeries((i) => (i + 1) % SERIES.length)
+      if (!heroPausedRef.current) setHeroSeries((i) => (i + 1) % heroList.length)
     }, 5000)
     return () => window.clearInterval(timer)
-  }, [])
-  const hero = SERIES[heroSeries]
+  }, [heroList.length])
+  const hero = heroList[heroSeries % heroList.length]
 
   const targetScrollFractionRef = useRef(0)
   const currentScrollFractionRef = useRef(0)
@@ -580,20 +652,20 @@ function Landing() {
               <div style={s(0.14, 0.25)}>
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Серия</p>
-                  {SERIES.length > 1 && (
+                  {heroList.length > 1 && (
                     <div className="flex gap-1.5">
-                      {SERIES.map((x, i) => (
+                      {heroList.map((x, i) => (
                         <button
                           key={x.id}
                           type="button"
                           onClick={() => setHeroSeries(i)}
                           aria-label={`Показать серию «${x.title}»`}
-                          aria-current={i === heroSeries}
+                          aria-current={i === heroSeries % heroList.length}
                           className="group/dot flex h-4 cursor-pointer items-center"
                         >
                           <span
                             className={`block h-px transition-all duration-500 ${
-                              i === heroSeries ? 'w-6 bg-[#E8E6DC]' : 'w-3 bg-white/25 group-hover/dot:bg-white/60'
+                              i === heroSeries % heroList.length ? 'w-6 bg-[#E8E6DC]' : 'w-3 bg-white/25 group-hover/dot:bg-white/60'
                             }`}
                           />
                         </button>
@@ -628,7 +700,7 @@ function Landing() {
                     <AnimatePresence initial={false}>
                       <motion.img
                         key={hero.id}
-                        src={photoSrc(hero.photos[0].id, true)}
+                        src={hero.photos[0].srcSm}
                         alt={hero.photos[0].alt}
                         className="absolute inset-0 h-full w-full object-cover object-top"
                         initial={{ opacity: 0, scale: 1.06 }}
@@ -649,7 +721,7 @@ function Landing() {
                 className="mt-4 font-serif text-2xl text-white transition-colors duration-500 group-hover:text-[#E8E6DC]"
                 style={s(0.2, 0.31)}
               >
-                от {formatPrice(MIN_PRICE)}
+                от {formatPrice(Math.min(...packages.map((p) => p.price)))}
               </p>
             </div>
           </aside>
@@ -954,6 +1026,7 @@ const FAQ: { q: string; a?: string }[] = [
 ]
 
 function PricePage() {
+  const { packages } = useContent()
   const [dialog, setDialog] = useState<DialogState>(null)
   const closeDialog = useCallback(() => setDialog(null), [])
   const eyebrow = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40'
@@ -978,7 +1051,7 @@ function PricePage() {
             {rule}
           </div>
           <ol className="flex flex-col divide-y divide-white/10 border-y border-white/10 lg:col-span-7 lg:self-end">
-            {[...PACKAGES.map((p) => ({ id: p.id, name: p.name, sub: p.duration, price: formatPrice(p.price) })), {
+            {[...packages.map((p) => ({ id: p.id, name: p.name, sub: p.duration, price: formatPrice(p.price) })), {
               id: 'events',
               name: 'Свадебный',
               sub: 'свадьбы и события',
@@ -1005,7 +1078,7 @@ function PricePage() {
 
         {/* Пакеты подробно */}
         <section aria-label="Пакеты" className="grid grid-cols-1 gap-px overflow-hidden rounded-sm border border-white/10 bg-white/10 lg:grid-cols-3">
-          {PACKAGES.map((p, i) => (
+          {packages.map((p, i) => (
             <article key={p.id} id={`price-${p.id}`} className="flex scroll-mt-8 flex-col bg-[#020202] p-6 md:p-8">
               <p className={eyebrow}>
                 Пакет {i + 1} · {p.duration}
@@ -1041,7 +1114,7 @@ function PricePage() {
         {/* Свадьбы и события + скидки */}
         <div className="grid grid-cols-1 gap-16 lg:grid-cols-12 lg:gap-8">
           <section id="price-events" aria-labelledby="events-title" className="scroll-mt-8 lg:col-span-7">
-            <p className={eyebrow}>Пакет 4 · Другие события</p>
+            <p className={eyebrow}>Пакет {packages.length + 1} · Другие события</p>
             <h2 id="events-title" className="mt-4 font-serif text-4xl leading-none text-white md:text-5xl">
               {EVENTS.title}
             </h2>
@@ -1166,9 +1239,8 @@ function PrivacyPage() {
     {
       title: '5. Как хранятся и кому передаются данные',
       body: [
-        'Заявка сохраняется в базе данных сервиса записи, а уведомление о ней приходит мне в Telegram. Данные не продаются и не передаются третьим лицам, кроме сервисов, без которых запись не работает:',
-        ['Cloudflare — хостинг сайта и база данных заявок;', 'Telegram — уведомление о заявке.'],
-        'Серверы этих сервисов могут находиться за пределами России. Отмечая согласие, вы соглашаетесь и на такую (трансграничную) передачу.',
+        'Заявки хранятся в базе данных на сервере сайта в России. Данные не продаются и не передаются третьим лицам.',
+        'Уведомление о заявке приходит мне в Telegram, а если вы сами подпишетесь на бота — вам. Серверы Telegram могут находиться за пределами России; отмечая согласие, вы соглашаетесь и на такую (трансграничную) передачу.',
       ],
     },
     {
@@ -1183,7 +1255,7 @@ function PrivacyPage() {
     },
     {
       title: '8. Cookies и аналитика',
-      body: ['Сайт не использует cookies и сервисы аналитики.'],
+      body: ['Сайт не использует cookies и сервисы аналитики для посетителей.'],
     },
     {
       title: '9. Изменения',
@@ -1222,6 +1294,126 @@ function PrivacyPage() {
               </section>
             ))}
           </div>
+        </div>
+      </main>
+      <SubPageFooter />
+      <AnimatePresence>
+        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+/* ---------- Статус заявки для клиента ---------- */
+
+type BookingStatus = {
+  status: 'new' | 'confirmed' | 'cancelled'
+  packageName: string
+  packagePrice: number
+  date: string
+  time: string
+  name: string
+  subscribed: boolean
+  telegramBot: string | null
+}
+
+const STATUS_VIEW: Record<BookingStatus['status'], { label: string; text: string; tone: string }> = {
+  new: {
+    label: 'Ждёт подтверждения',
+    text: 'Заявка у меня. Я посмотрю её и подтвержу съёмку или напишу вам, если что-то нужно уточнить.',
+    tone: 'border-white/25 text-white/80',
+  },
+  confirmed: {
+    label: 'Съёмка подтверждена',
+    text: 'До встречи! Если планы изменятся — напишите мне в Telegram.',
+    tone: 'border-[#E8E6DC] bg-[#E8E6DC] text-[#121212]',
+  },
+  cancelled: {
+    label: 'Заявка отменена',
+    text: 'Если это ошибка или хотите выбрать другое время — напишите мне или запишитесь снова.',
+    tone: 'border-white/15 text-white/45 line-through decoration-white/30',
+  },
+}
+
+function BookingStatusPage({ token }: { token: string }) {
+  const [dialog, setDialog] = useState<DialogState>(null)
+  const closeDialog = useCallback(() => setDialog(null), [])
+  const [state, setState] = useState<{ status: 'loading' } | { status: 'ok'; data: BookingStatus } | { status: 'error'; message: string }>(
+    { status: 'loading' },
+  )
+
+  useEffect(() => {
+    if (!API) {
+      setState({ status: 'error', message: 'Статус заявки доступен только на работающем сайте.' })
+      return
+    }
+    fetch(`${API}/bookings/${encodeURIComponent(token)}`)
+      .then(async (r) => {
+        if (r.ok) return setState({ status: 'ok', data: await r.json() })
+        setState({ status: 'error', message: r.status === 404 ? 'Заявка не найдена. Проверьте ссылку.' : 'Не удалось загрузить заявку.' })
+      })
+      .catch(() => setState({ status: 'error', message: 'Нет связи с сервером. Попробуйте позже.' }))
+  }, [token])
+
+  return (
+    <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
+      <SubPageHeader onDialog={setDialog} />
+      <main className="px-6 pb-24 pt-6 md:px-10 lg:px-12 lg:pt-10">
+        <div className="max-w-[640px]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Запись на съёмку</p>
+          <h1 className="mt-5 font-serif text-5xl leading-[0.95] text-[#E8E6DC] md:text-6xl">Ваша заявка</h1>
+          <span className="mt-6 block h-px w-14 bg-white/25" aria-hidden="true" />
+
+          {state.status === 'loading' && <p className="mt-10 text-[14px] text-white/45">Загружаю…</p>}
+          {state.status === 'error' && <p className="mt-10 text-[14px] text-white/65">{state.message}</p>}
+          {state.status === 'ok' && (
+            <div className="mt-10 flex flex-col gap-8" aria-live="polite">
+              <span className={`self-start rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] ${STATUS_VIEW[state.data.status].tone}`}>
+                {STATUS_VIEW[state.data.status].label}
+              </span>
+              <dl className="divide-y divide-white/10 border-y border-white/10 text-[14px]">
+                {[
+                  ['Имя', state.data.name],
+                  ['Пакет', `${state.data.packageName} · ${formatPrice(state.data.packagePrice)}`],
+                  ['Дата', formatDateRu(state.data.date, true)],
+                  ['Время', `${state.data.time} (по Петербургу)`],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-6 py-4">
+                    <dt className="text-white/45">{k}</dt>
+                    <dd className="text-right text-white/90">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="text-[14px] leading-relaxed text-white/60">{STATUS_VIEW[state.data.status].text}</p>
+              <div className="flex flex-wrap gap-3">
+                {state.data.telegramBot && !state.data.subscribed && state.data.status !== 'cancelled' && (
+                  <a
+                    href={`https://t.me/${state.data.telegramBot}?start=b_${token}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full bg-[#E8E6DC] px-6 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#121212] transition-colors duration-300 hover:bg-white"
+                  >
+                    <Send className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    Уведомления в Telegram
+                  </a>
+                )}
+                {state.data.subscribed && (
+                  <span className="inline-flex items-center gap-2 text-[12.5px] text-white/55">
+                    <Check className="h-4 w-4" strokeWidth={2} /> Уведомления в Telegram включены
+                  </span>
+                )}
+                <a
+                  href={TELEGRAM_PERSONAL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 px-6 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:text-[#E8E6DC]"
+                >
+                  Написать @vaaaaaag
+                  <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+                </a>
+              </div>
+            </div>
+          )}
         </div>
       </main>
       <SubPageFooter />
@@ -1278,7 +1470,10 @@ function PortfolioSection({
   onFilter: (id: string) => void
   onOpen: (shots: Shot[], index: number) => void
 }) {
-  const shots = shotsOf(filter)
+  const { series: SERIES } = useContent()
+  // Серия из ссылки могла исчезнуть — тогда показываем всё
+  if (filter !== 'all' && !SERIES.some((x) => x.id === filter)) filter = 'all'
+  const shots = shotsOf(SERIES, filter)
   const current = SERIES.find((x) => x.id === filter)
   const tabs = [{ id: 'all', title: 'Все' }, ...SERIES]
 
@@ -1327,10 +1522,10 @@ function PortfolioSection({
           )}
           <p className="min-h-[1.5em] max-w-[420px] text-[12.5px] leading-relaxed text-white/45 lg:text-right">
             {SERIES.length === 1
-              ? `${SERIES[0].title} · ${SERIES[0].description} · ${shotsOf('all').length} фото`
+              ? `${SERIES[0].title} · ${SERIES[0].description} · ${shotsOf(SERIES, 'all').length} фото`
               : current
                 ? current.description
-                : `${plural(SERIES.length, 'серия', 'серии', 'серий')} · ${shotsOf('all').length} фото`}
+                : `${plural(SERIES.length, 'серия', 'серии', 'серий')} · ${shotsOf(SERIES, 'all').length} фото`}
           </p>
         </div>
       </div>
@@ -1352,7 +1547,7 @@ function PortfolioSection({
             aria-label={`Открыть фото: ${shot.alt}`}
           >
             <img
-              src={photoSrc(shot.id, true)}
+              src={shot.srcSm}
               alt={shot.alt}
               loading="lazy"
               className="h-full w-full object-cover transition-transform duration-[1200ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
@@ -1424,7 +1619,7 @@ function Lightbox({
         <AnimatePresence mode="wait" initial={false}>
           <motion.img
             key={shot.id}
-            src={photoSrc(shot.id)}
+            src={shot.src}
             alt={shot.alt}
             className="max-h-full max-w-full object-contain"
             initial={{ opacity: 0, scale: 0.98 }}
@@ -1712,17 +1907,23 @@ function monthCells(ym: string): (string | null)[] {
 }
 
 type Slots = Record<string, string[]>
-type SlotsState = { status: 'loading' } | { status: 'ready'; slots: Slots } | { status: 'error' }
+type SlotsData = { first: string; last: string; times: string[]; slots: Slots }
+type SlotsState = { status: 'loading' } | ({ status: 'ready' } & SlotsData) | { status: 'error' }
 type SendState =
   | { status: 'idle' }
   | { status: 'sending' }
-  | { status: 'sent'; request: BookingRequest }
+  | { status: 'sent'; request: BookingRequest; token: string }
   | { status: 'manual'; request: BookingRequest }
   | { status: 'error'; message: string }
 
 function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
+  const { packages, live, telegramBot } = useContent()
+  // С сервером — его расписание и проверка; без сервера (превью) — демо-режим
+  const online = live && API !== null
   const window_ = bookingWindow()
-  const [packageId, setPackageId] = useState<PackageId>(initialPackage ?? 'standard')
+  const [packageId, setPackageId] = useState<PackageId>(
+    initialPackage ?? (packages.find((p) => p.id === 'standard') ?? packages[0]).id,
+  )
   const [date, setDate] = useState<string | null>(null)
   const [time, setTime] = useState<string | null>(null)
   const [month, setMonth] = useState(window_.first.slice(0, 7))
@@ -1732,69 +1933,71 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
   const [fieldError, setFieldError] = useState<string | null>(null)
 
   const loadSlots = useCallback(async () => {
-    if (!BOOKING_API) {
-      // Демо: сервер не подключён, показываем все окошки по расписанию
-      setSlots({ status: 'ready', slots: allSlots(window_.first, window_.last) })
+    if (!online) {
+      // Демо: сервер не подключён, показываем все окошки по расписанию по умолчанию
+      setSlots({ status: 'ready', first: window_.first, last: window_.last, times: SLOT_TIMES, slots: allSlots(window_.first, window_.last) })
       return
     }
     setSlots({ status: 'loading' })
     try {
-      const res = await fetch(`${BOOKING_API}/slots`)
+      const res = await fetch(`${API}/slots`)
       if (!res.ok) throw new Error(String(res.status))
-      const data = (await res.json()) as { slots: Slots }
-      setSlots({ status: 'ready', slots: data.slots })
+      const data = (await res.json()) as SlotsData
+      setSlots({ status: 'ready', ...data })
+      setMonth((m) => (m < data.first.slice(0, 7) ? data.first.slice(0, 7) : m))
     } catch {
       setSlots({ status: 'error' })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [online])
 
   useEffect(() => {
     loadSlots()
   }, [loadSlots])
 
   const free: Slots = slots.status === 'ready' ? slots.slots : {}
-  const selectedPkg = PACKAGES.find((p) => p.id === packageId)!
-  const firstMonth = window_.first.slice(0, 7)
-  const lastMonth = window_.last.slice(0, 7)
+  const times = slots.status === 'ready' ? slots.times : SLOT_TIMES
+  const selectedPkg = packages.find((p) => p.id === packageId) ?? packages[0]
+  const firstMonth = (slots.status === 'ready' ? slots.first : window_.first).slice(0, 7)
+  const lastMonth = (slots.status === 'ready' ? slots.last : window_.last).slice(0, 7)
 
   const request = (): BookingRequest | null =>
     date && time
-      ? { packageId, date, time, name: form.name, contact: form.contact, comment: form.comment, website: form.website, consent: form.consent }
+      ? { packageId: selectedPkg.id, date, time, name: form.name, contact: form.contact, comment: form.comment, website: form.website, consent: form.consent }
       : null
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const r = request()
-    const problem = r ? validateBooking(r) : date ? 'Выберите время.' : 'Выберите дату.'
+    const problem = !r ? (date ? 'Выберите время.' : 'Выберите дату.') : online ? validateContactFields(r) : validateBooking(r)
     if (problem || !r) {
       setFieldError(problem)
       return
     }
     setFieldError(null)
 
-    if (!BOOKING_API) {
+    if (!online) {
       setSend({ status: 'manual', request: r })
       return
     }
 
     setSend({ status: 'sending' })
     try {
-      const res = await fetch(`${BOOKING_API}/bookings`, {
+      const res = await fetch(`${API}/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(r),
       })
-      const data = (await res.json().catch(() => ({}))) as { message?: string }
-      if (res.ok) {
-        setSend({ status: 'sent', request: r })
+      const data = (await res.json().catch(() => ({}))) as { detail?: string; token?: string }
+      if (res.ok && data.token) {
+        setSend({ status: 'sent', request: r, token: data.token })
         return
       }
       if (res.status === 409) {
         setTime(null)
         loadSlots()
       }
-      setSend({ status: 'error', message: data.message ?? 'Не получилось отправить заявку. Напишите мне в Telegram.' })
+      setSend({ status: 'error', message: data.detail ?? 'Не получилось отправить заявку. Напишите мне в Telegram.' })
     } catch {
       setSend({ status: 'error', message: 'Нет связи с сервером. Проверьте интернет или напишите мне в Telegram.' })
     }
@@ -1806,7 +2009,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
 
   if (send.status === 'sent' || send.status === 'manual') {
     const r = send.request
-    const text = bookingMessage(r)
+    const text = bookingMessage(r, selectedPkg)
     return (
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-12" aria-live="polite">
         <div className="lg:col-span-6">
@@ -1828,9 +2031,33 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
           </h2>
           <p className="mt-6 max-w-[440px] text-[14px] leading-relaxed text-white/60">
             {send.status === 'sent'
-              ? 'Окошко за вами. Я свяжусь с вами, чтобы подтвердить время и обсудить детали.'
+              ? 'Окошко за вами. Я посмотрю заявку и подтвержу съёмку — статус можно проверить по ссылке ниже.'
               : 'Скопируйте текст заявки и отправьте его мне в Telegram — так я увижу её сразу.'}
           </p>
+          {send.status === 'sent' && (
+            <div className="mt-8 flex flex-wrap gap-3">
+              {telegramBot && (
+                <a
+                  href={`https://t.me/${telegramBot}?start=b_${send.token}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full bg-[#E8E6DC] px-6 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#121212] transition-colors duration-300 hover:bg-white"
+                >
+                  <Send className="h-3.5 w-3.5" strokeWidth={1.8} />
+                  Уведомления в Telegram
+                </a>
+              )}
+              <a
+                href={`#booking-${send.token}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-white/20 px-6 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:text-[#E8E6DC]"
+              >
+                Статус заявки
+                <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+              </a>
+            </div>
+          )}
         </div>
         <div className="flex flex-col gap-5 lg:col-span-6">
           <pre className="whitespace-pre-wrap rounded-sm border border-white/10 bg-white/[0.03] p-5 font-sans text-[13px] leading-relaxed text-white/80">
@@ -1887,7 +2114,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
       <fieldset>
         <legend className={eyebrow}>1 · Пакет</legend>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {PACKAGES.map((p: Package) => {
+          {packages.map((p: Package) => {
             const active = p.id === packageId
             return (
               <label
@@ -1993,7 +2220,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
               <>
                 <p className="mt-4 text-[13px] text-white/60">{formatDateRu(date)}</p>
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {SLOT_TIMES.map((t) => {
+                  {times.map((t) => {
                     const open = free[date]?.includes(t)
                     const selected = t === time
                     return (
@@ -2123,7 +2350,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
           )}
         </p>
       )}
-      {!BOOKING_API && (
+      {!online && (
         <p className="-mt-8 text-[11.5px] text-white/35">
           Онлайн-запись пока в тестовом режиме: после нажатия вы получите готовый текст заявки для Telegram.
         </p>

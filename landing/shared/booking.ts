@@ -1,9 +1,13 @@
 /**
- * Настройки записи — общие для сайта и сервера (booking-worker), чтобы они не расходились.
- * Поменять расписание, пакеты или цены — только здесь, потом пересобрать сайт и выложить сервер.
+ * Запись на съёмку: пакеты и расписание по умолчанию, даты, проверка заявки.
+ *
+ * На работающем сайте пакеты и расписание приходят с сервера (их меняют в админке),
+ * а эти значения — запасные: для превью без сервера и пока сервер не ответил.
+ * Первичное наполнение базы — server/app/seed.json.
  */
 
-export type PackageId = 'minimal' | 'standard' | 'maximal'
+/** Код пакета: minimal, standard… Новые пакеты из админки получают свои коды. */
+export type PackageId = string
 
 export type Package = {
   id: PackageId
@@ -11,14 +15,14 @@ export type Package = {
   /** Длительность съёмки, например «2 часа». */
   duration: string
   /** Сколько фото в итоге; пусто — не указано. */
-  photos?: string
+  photos?: string | null
   price: number
   /** Одна фраза под названием. */
-  tagline?: string
+  tagline?: string | null
   /** Что входит. */
   features: string[]
   /** Для кого пакет — мелкая подпись под ценой. */
-  note?: string
+  note?: string | null
 }
 
 /** Пакеты из прайса автора. Отсюда же берутся цены на главной, в записи и в сообщении в Telegram. */
@@ -151,12 +155,8 @@ export type BookingRequest = {
 
 export const LIMITS = { name: 80, contact: 100, comment: 1000 }
 
-/** Проверка заявки. Возвращает текст ошибки для человека или null. */
-export function validateBooking(b: Partial<BookingRequest>, now = new Date()): string | null {
-  if (!b || typeof b !== 'object') return 'Пустая заявка.'
-  if (!PACKAGES.some((p) => p.id === b.packageId)) return 'Выберите пакет.'
-  if (typeof b.date !== 'string' || !isBookableDate(b.date, now)) return 'На эту дату запись недоступна.'
-  if (typeof b.time !== 'string' || !SLOT_TIMES.includes(b.time)) return 'Выберите время.'
+/** Проверка полей, которые заполняет человек: имя, контакт, комментарий, согласие. */
+export function validateContactFields(b: Partial<BookingRequest>): string | null {
   const name = typeof b.name === 'string' ? b.name.trim() : ''
   const contact = typeof b.contact === 'string' ? b.contact.trim() : ''
   const comment = typeof b.comment === 'string' ? b.comment.trim() : ''
@@ -164,16 +164,28 @@ export function validateBooking(b: Partial<BookingRequest>, now = new Date()): s
   if (name.length > LIMITS.name) return 'Имя слишком длинное.'
   if (contact.length < 3) return 'Оставьте Telegram или телефон, чтобы я мог ответить.'
   if (contact.length > LIMITS.contact) return 'Контакт слишком длинный.'
-  if (b.consent !== true) return 'Отметьте согласие на обработку персональных данных.'
   if (comment.length > LIMITS.comment) return `Комментарий длиннее ${LIMITS.comment} символов.`
+  if (b.consent !== true) return 'Отметьте согласие на обработку персональных данных.'
   return null
 }
 
+/**
+ * Полная проверка заявки по расписанию и пакетам по умолчанию (демо-режим без сервера).
+ * С сервером дату и время проверяет он — его расписание меняется в админке.
+ */
+export function validateBooking(b: Partial<BookingRequest>, now = new Date()): string | null {
+  if (!b || typeof b !== 'object') return 'Пустая заявка.'
+  if (!PACKAGES.some((p) => p.id === b.packageId)) return 'Выберите пакет.'
+  if (typeof b.date !== 'string' || !isBookableDate(b.date, now)) return 'На эту дату запись недоступна.'
+  if (typeof b.time !== 'string' || !SLOT_TIMES.includes(b.time)) return 'Выберите время.'
+  return validateContactFields(b)
+}
+
 /** Текст заявки — его получает фотограф в Telegram (и его же видит клиент, если отправляет сам). */
-export function bookingMessage(b: BookingRequest, id?: number): string {
-  const pkg = PACKAGES.find((p) => p.id === b.packageId)!
+export function bookingMessage(b: BookingRequest, pkg?: Package): string {
+  pkg ??= PACKAGES.find((p) => p.id === b.packageId)!
   const lines = [
-    `📸 Новая заявка на съёмку${id ? ` #${id}` : ''}`,
+    '📸 Заявка на съёмку',
     '',
     `Пакет: ${pkg.name} (${packageSummary(pkg)}) — ${formatPrice(pkg.price)}`,
     `Дата: ${formatDateRu(b.date, true)}`,

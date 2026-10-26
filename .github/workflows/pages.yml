@@ -1,5 +1,6 @@
 # Сайт фотографа (landing/) на GitHub Pages — бесплатно, без сервера.
 # Сборка в демо-режиме: запись отправляет готовый текст заявки в Telegram, админки нет.
+# Собранный сайт кладётся в ветку gh-pages — из неё GitHub Pages и показывает сайт.
 # Запускается при изменениях в landing/ на ветке main или вручную (Actions → Run workflow).
 name: Сайт на GitHub Pages
 
@@ -10,16 +11,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,16 +36,10 @@ jobs:
         env:
           VITE_DEMO: '1'
           VITE_SITE_URL: https://vaag-ph.duckdns.org
-      - uses: actions/upload-pages-artifact@v3
+      - uses: peaceiris/actions-gh-pages@v4
         with:
-          path: landing/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: landing/dist
+          publish_branch: gh-pages
+          # Свой домен: когда DuckDNS будет указывать на GitHub, раскомментируйте строку ниже
+          # cname: vaag-ph.duckdns.org

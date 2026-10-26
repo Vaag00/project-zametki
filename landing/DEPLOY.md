@@ -211,17 +211,20 @@ npm run dev     # http://localhost:5173, запросы /api уходят на �
 
 ## Бесплатно: GitHub Pages (без сервера)
 
-Сайт собирается и выкладывается автоматически при каждом изменении в `landing/` на ветке `main`
-(сценарий — `.github/workflows/pages.yml`).
+Сайт уже опубликован: **https://vaag00.github.io/project-zametki/**
 
-**Один раз включить:**
+Он лежит в ветке `gh-pages`. При каждом изменении в `landing/` на ветке `main` сценарий
+`.github/workflows/pages.yml` собирает сайт заново и обновляет `gh-pages` — сайт обновляется сам за пару минут.
+Обновить вручную: **Actions → «Сайт на GitHub Pages» → Run workflow**.
 
-1. На GitHub в репозитории: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-2. **Actions → «Сайт на GitHub Pages» → Run workflow** (или любое изменение в `landing/` на `main`).
-   Через пару минут сайт откроется по адресу `https://vaag00.github.io/project-zametki/`.
-3. **Свой адрес:** в DuckDNS в поле «текущий ip» впишите `185.199.108.153` (адрес GitHub Pages) и нажмите «обновить ip».
-4. На GitHub: **Settings → Pages → Custom domain** — впишите `vaag-ph.duckdns.org`, **Save**.
-   Когда проверка пройдёт (от нескольких минут до часа), включите **Enforce HTTPS**.
+**Подключить свой адрес `vaag-ph.duckdns.org`:**
+
+1. В DuckDNS в поле «текущий ip» впишите `185.199.108.153` (адрес GitHub Pages) и нажмите «обновить ip».
+2. На GitHub: **Settings → Pages → Custom domain** — впишите `vaag-ph.duckdns.org`, **Save**.
+   Источник (Source) не меняйте — там должна остаться ветка `gh-pages`.
+3. Когда проверка пройдёт (от нескольких минут до часа), включите **Enforce HTTPS**.
+4. В `.github/workflows/pages.yml` раскомментируйте строку `cname: vaag-ph.duckdns.org` —
+   иначе следующее обновление сайта сбросит домен.
 
 **Что работает:** главная, портфолио, прайс, частые вопросы, политика, запись в упрощённом режиме.
 **Что нет:** админка, сохранение заявок, занятые окошки, бот. Цены, фото и тексты меняются в коде

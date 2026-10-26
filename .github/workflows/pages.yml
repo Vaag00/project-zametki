@@ -1,7 +1,9 @@
 # Сайт фотографа (landing/) на GitHub Pages — бесплатно, без сервера.
-# Сборка в демо-режиме: запись отправляет готовый текст заявки в Telegram, админки нет.
+# Если бот в Яндекс Облаке уже развёрнут (секрет YC_SA_KEY и функция vaag-bot есть), запись на сайте идёт через него:
+# заявки сохраняются, занятые окошки скрываются, вам приходит сообщение в Telegram.
+# Иначе — демо-режим: запись отправляет готовый текст заявки в Telegram. Админки на GitHub Pages нет.
 # Собранный сайт кладётся в ветку gh-pages — из неё GitHub Pages и показывает сайт.
-# Запускается при изменениях в landing/ на ветке main или вручную (Actions → Run workflow).
+# Запускается при изменениях в landing/ на ветке main, после развёртывания бота или вручную (Actions → Run workflow).
 name: Сайт на GitHub Pages
 
 on:
@@ -30,11 +32,28 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: landing/package-lock.json
+      - name: Адрес бота
+        env:
+          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+        run: |
+          url=""
+          if [ -n "$YC_SA_KEY" ]; then
+            bot/deploy/yc_login.sh
+            export PATH="$HOME/yc/bin:$PATH"
+            url=$(yc serverless function get --name vaag-bot --format json 2>/dev/null \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("http_invoke_url", ""))' || true)
+          fi
+          if [ -n "$url" ]; then
+            echo "Запись через бота: $url"
+            { echo "VITE_API_BASE=$url"; echo "VITE_API_CLOUD=1"; } >> "$GITHUB_ENV"
+          else
+            echo "Бот не развёрнут — сайт в демо-режиме"
+            echo "VITE_DEMO=1" >> "$GITHUB_ENV"
+          fi
       - run: npm ci
       # Относительные пути (--base ./): сайт работает и на своём домене, и по адресу <user>.github.io/<repo>/
       - run: npm run build -- --base ./
         env:
-          VITE_DEMO: '1'
           VITE_SITE_URL: https://vaag-ph.duckdns.org
       - uses: peaceiris/actions-gh-pages@v4
         with:

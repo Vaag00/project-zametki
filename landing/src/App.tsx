@@ -23,9 +23,14 @@ import {
 /**
  * Адрес API сервера (server/). По умолчанию /api на том же сайте.
  * VITE_DEMO=1 — сборка без сервера (превью): данные по умолчанию, запись в демо-режиме.
+ * VITE_API_CLOUD=1 — API в функции Яндекс Облака (bot/): адрес функции в VITE_API_BASE, маршрут в ?r=, админки нет.
  */
 const API: string | null =
   import.meta.env.VITE_DEMO === '1' ? null : ((import.meta.env.VITE_API_BASE as string | undefined) ?? '/api').replace(/\/$/, '')
+const CLOUD = API !== null && import.meta.env.VITE_API_CLOUD === '1'
+
+/** Адрес запроса к API: '/slots' → '/api/slots' или '<функция>?r=slots'. */
+const apiUrl = (path: string) => (CLOUD ? `${API}?r=${path.slice(1)}` : `${API}${path}`)
 
 /** Админка — отдельный файл, грузится только при входе в неё. */
 const AdminPage = lazy(() => import('./Admin'))
@@ -148,12 +153,13 @@ function useServerContent(): Content {
   const [content, setContent] = useState(DEFAULT_CONTENT)
   useEffect(() => {
     if (!API) return
-    fetch(`${API}/content`)
+    fetch(apiUrl('/content'))
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data: Omit<Content, 'live'>) =>
+      .then((data: Omit<Content, 'live' | 'series'> & { series?: Series[] }) =>
         setContent({
           packages: data.packages.length ? data.packages : PACKAGES,
-          series: data.series,
+          // Функция в облаке портфолио не хранит — фото остаются из сборки
+          series: data.series ?? DEFAULT_SERIES,
           telegramBot: data.telegramBot,
           live: true,
         }),
@@ -201,7 +207,7 @@ type Route =
 function readRoute(): Route {
   if (window.location.hash === '#price') return { page: 'price' }
   if (window.location.hash === '#privacy') return { page: 'privacy' }
-  if (window.location.hash === '#admin') return { page: 'admin' }
+  if (window.location.hash === '#admin' && !CLOUD) return { page: 'admin' }
   const b = window.location.hash.match(/^#booking-([\w-]+)$/)
   if (b) return { page: 'booking', token: b[1] }
   const m = window.location.hash.match(/^#portfolio(?:-([\w-]+))?$/)
@@ -1308,8 +1314,14 @@ function PrivacyPage() {
       ? {
           title: '2. Какие данные я получаю',
           body: [
-            'Только то, что вы сами указываете в форме записи:',
-            ['имя;', 'Telegram или номер телефона;', 'комментарий к заявке (по желанию);', 'выбранные пакет, дату и время съёмки.'],
+            CLOUD ? 'Только то, что вы сами указываете при записи на сайте или в боте Telegram:' : 'Только то, что вы сами указываете в форме записи:',
+            [
+              'имя;',
+              'Telegram или номер телефона;',
+              'комментарий к заявке (по желанию);',
+              'выбранные пакет, дату и время съёмки.',
+              ...(CLOUD ? ['при записи в боте — ваш username и идентификатор в Telegram, чтобы ответить вам.'] : []),
+            ],
             'Для защиты от спама сохраняется необратимый отпечаток (хеш) IP-адреса — сам адрес не хранится.',
           ],
         }
@@ -1329,7 +1341,9 @@ function PrivacyPage() {
       title: '4. Основание',
       body: [
         withServer
-          ? 'Ваше согласие, которое вы даёте, отмечая галочку в форме записи. Без согласия заявку отправить нельзя.'
+          ? CLOUD
+            ? 'Ваше согласие, которое вы даёте, отмечая галочку в форме записи на сайте или нажимая «Записаться» в боте. Без согласия заявку отправить нельзя.'
+            : 'Ваше согласие, которое вы даёте, отмечая галочку в форме записи. Без согласия заявку отправить нельзя.'
           : 'Ваше согласие: вы сами решаете, отправлять ли мне заявку, и отмечаете согласие в форме записи.',
       ],
     },
@@ -1337,8 +1351,13 @@ function PrivacyPage() {
       ? {
           title: '5. Как хранятся и кому передаются данные',
           body: [
-            'Заявки хранятся в базе данных на сервере сайта в России. Данные не продаются и не передаются третьим лицам.',
+            CLOUD
+              ? 'Заявки хранятся в базе данных в Яндекс Облаке (Yandex Cloud), серверы в России. Данные не продаются и не передаются третьим лицам.'
+              : 'Заявки хранятся в базе данных на сервере сайта в России. Данные не продаются и не передаются третьим лицам.',
             'Уведомление о заявке приходит мне в Telegram, а если вы сами подпишетесь на бота — вам. Серверы Telegram могут находиться за пределами России; отмечая согласие, вы соглашаетесь и на такую (трансграничную) передачу.',
+            ...(CLOUD
+              ? ['Сайт размещён на GitHub Pages. Как и любой хостинг, GitHub может вести технические журналы посещений (например, IP-адреса); у меня к ним доступа нет.']
+              : []),
           ],
         }
       : {
@@ -1453,7 +1472,7 @@ function BookingStatusPage({ token }: { token: string }) {
       setState({ status: 'error', message: 'Статус заявки доступен только на работающем сайте.' })
       return
     }
-    fetch(`${API}/bookings/${encodeURIComponent(token)}`)
+    fetch(apiUrl(`/bookings/${encodeURIComponent(token)}`))
       .then(async (r) => {
         if (r.ok) return setState({ status: 'ok', data: await r.json() })
         setState({ status: 'error', message: r.status === 404 ? 'Заявка не найдена. Проверьте ссылку.' : 'Не удалось загрузить заявку.' })
@@ -2046,7 +2065,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
     }
     setSlots({ status: 'loading' })
     try {
-      const res = await fetch(`${API}/slots`)
+      const res = await fetch(apiUrl('/slots'))
       if (!res.ok) throw new Error(String(res.status))
       const data = (await res.json()) as SlotsData
       setSlots({ status: 'ready', ...data })
@@ -2089,7 +2108,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
 
     setSend({ status: 'sending' })
     try {
-      const res = await fetch(`${API}/bookings`, {
+      const res = await fetch(apiUrl('/bookings'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(r),
@@ -2213,6 +2232,21 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
         </div>
         <p className="max-w-[360px] text-[12.5px] leading-relaxed text-white/45 lg:text-right">
           Время — по Петербургу. Заявка придёт мне в Telegram, после неё я подтвержу съёмку лично.
+          {online && telegramBot && (
+            <>
+              {' '}
+              Удобнее в Telegram?{' '}
+              <a
+                href={`https://t.me/${telegramBot}?start=book`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-white/75 underline decoration-white/30 underline-offset-4 transition-colors duration-300 hover:text-white"
+              >
+                Запишитесь через бота
+              </a>
+              .
+            </>
+          )}
         </p>
       </div>
 

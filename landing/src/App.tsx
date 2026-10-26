@@ -36,7 +36,9 @@ const ACCENT = '#E8E6DC'
 const TELEGRAM_CHANNEL = 'https://t.me/Vaag_ph'
 const TELEGRAM_PERSONAL = 'https://t.me/vaaaaaag'
 const INSTAGRAM = 'https://instagram.com/vaag.ph'
-const SITE = 'https://vaag-ph.ru'
+/** Адрес сайта — из SITE_URL при сборке (бесплатный домен или свой). */
+const SITE = import.meta.env.VITE_SITE_URL as string
+const SITE_HOST = SITE.replace(/^https?:\/\//, '')
 
 /** Путь к файлу из /public с учётом base, чтобы сборка работала не только из корня сайта. */
 const asset = (file: string) => `${import.meta.env.BASE_URL}${file}`
@@ -1204,7 +1206,7 @@ const PRIVACY_OPERATOR = {
   status: '[самозанятый / ИП, ИНН]',
   email: '[e-mail для обращений]',
   telegram: '@vaaaaaag',
-  site: 'vaag-ph.ru',
+  site: SITE_HOST,
   edition: '26 октября 2026 г.',
 }
 
@@ -1661,7 +1663,7 @@ const CONTACTS = [
   { label: 'Telegram', value: '@vaaaaaag', href: TELEGRAM_PERSONAL },
   { label: 'Instagram', value: '@vaag.ph', href: INSTAGRAM },
   { label: 'Канал', value: 't.me/Vaag_ph', href: TELEGRAM_CHANNEL },
-  { label: 'Сайт', value: 'vaag-ph.ru', href: SITE },
+  { label: 'Сайт', value: SITE_HOST, href: SITE },
 ]
 
 const noop = () => {}

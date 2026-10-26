@@ -1,7 +1,10 @@
 # Запуск на сервере: docker compose up -d --build   (настройки — в файле .env, пример — .env.example)
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        SITE_URL: ${SITE_URL}
     env_file: .env
     environment:
       COOKIE_SECURE: "1"

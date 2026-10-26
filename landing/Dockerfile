@@ -9,6 +9,9 @@ COPY index.html vite.config.ts tsconfig.json ./
 COPY src ./src
 COPY shared ./shared
 COPY public ./public
+# Адрес сайта для превью ссылок — из SITE_URL в .env (передаёт docker-compose.yml)
+ARG SITE_URL=https://vaag-ph.ru
+ENV VITE_SITE_URL=$SITE_URL
 RUN npm run build
 
 # 2. Сервер

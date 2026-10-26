@@ -139,10 +139,11 @@ function plural(n: number, one: string, few: string, many: string) {
 /* ---------- Страницы ----------
  * Главная — без хеша. Отдельные страницы: #portfolio (или #portfolio-<серия>) и #price.
  * Хеш, а не путь: так страница работает на любом хостинге и кнопка «Назад» в браузере тоже. */
-type Route = { page: 'home' } | { page: 'portfolio'; series: string } | { page: 'price' }
+type Route = { page: 'home' } | { page: 'portfolio'; series: string } | { page: 'price' } | { page: 'privacy' }
 
 function readRoute(): Route {
   if (window.location.hash === '#price') return { page: 'price' }
+  if (window.location.hash === '#privacy') return { page: 'privacy' }
   const m = window.location.hash.match(/^#portfolio(?:-([\w-]+))?$/)
   if (!m) return { page: 'home' }
   const series = m[1] && SERIES.some((x) => x.id === m[1]) ? m[1] : 'all'
@@ -288,10 +289,16 @@ export default function App() {
   const route = useRoute()
   useEffect(() => {
     document.title =
-      route.page === 'portfolio' ? 'Портфолио — VAAAAAAG' : route.page === 'price' ? 'Прайс — VAAAAAAG' : 'VAAAAAAG — фоткает'
+      {
+        portfolio: 'Портфолио — VAAAAAAG',
+        price: 'Прайс — VAAAAAAG',
+        privacy: 'Политика конфиденциальности — VAAAAAAG',
+        home: 'VAAAAAAG — фоткает',
+      }[route.page]
   }, [route.page])
   if (route.page === 'portfolio') return <PortfolioPage key={route.series} initialSeries={route.series} />
   if (route.page === 'price') return <PricePage />
+  if (route.page === 'privacy') return <PrivacyPage />
   return <Landing />
 }
 
@@ -814,7 +821,7 @@ function Landing() {
 
 /* ---------- Шапка и подвал отдельных страниц ---------- */
 
-function SubPageHeader({ current, onDialog }: { current: 'portfolio' | 'price'; onDialog: (d: DialogState) => void }) {
+function SubPageHeader({ current, onDialog }: { current?: 'portfolio' | 'price'; onDialog: (d: DialogState) => void }) {
   const navLink =
     'group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] transition-colors duration-300'
   const underline =
@@ -885,6 +892,9 @@ function SubPageFooter() {
   return (
     <footer className="flex flex-col gap-2 border-t border-white/10 p-6 text-[11px] text-white/35 sm:flex-row sm:justify-between md:px-10 lg:px-12">
       <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
+      <a href="#privacy" className="underline-offset-4 hover:text-[#E8E6DC] hover:underline">
+        Политика конфиденциальности
+      </a>
       <span>Санкт-Петербург и область</span>
     </footer>
   )
@@ -913,6 +923,35 @@ const DISCOUNTS = {
   ],
   note: 'Скидка не суммируется с акциями и спецпредложениями.',
 }
+
+/** Частые вопросы. Вопрос без ответа на сайте не показывается — допишите `a`, и он появится. */
+const FAQ: { q: string; a?: string }[] = [
+  {
+    q: 'Как подготовиться к съёмке и что надеть?',
+    a: 'Перед съёмкой мы переписываемся: обсуждаем идею, образ, одежду и место. Консультация по подготовке, подбор мест и маршрут входят в Стандартный и Максимальный пакеты.',
+  },
+  {
+    q: 'Где проходят съёмки?',
+    a: 'В Санкт-Петербурге и области: лес, вода, город — под настроение, которое хочется передать. Подберу места и составлю маршрут.',
+  },
+  {
+    q: 'Как я получу фотографии?',
+    a: 'Обработанные фото — в закрытой папке на облачном диске. В Максимальном пакете дополнительно отдаю флешку со всеми обработанными фото.',
+  },
+  {
+    q: 'Снимаете свадьбы, дни рождения, корпоративы?',
+    a: 'Да, в формате репортажа. Стоимость по договорённости — зависит от задачи, места и количества гостей. Напишите мне в Telegram.',
+  },
+  {
+    q: 'Есть ли скидки?',
+    a: 'Постоянным клиентам: −5% на вторую съёмку и −10% на третью и дальше. Скидка не суммируется с акциями.',
+  },
+  // ↓ Ответы нужны от автора — пока эти вопросы на сайте не видны
+  { q: 'Через сколько дней будут готовы фото?' },
+  { q: 'Нужна ли предоплата?' },
+  { q: 'Что если нужно перенести съёмку или пойдёт дождь?' },
+  { q: 'Есть ли доплата за выезд за город?' },
+]
 
 function PricePage() {
   const [dialog, setDialog] = useState<DialogState>(null)
@@ -1047,10 +1086,145 @@ function PricePage() {
             <p className="mt-4 text-[12px] leading-relaxed text-white/40">{DISCOUNTS.note}</p>
           </section>
         </div>
+
+        {/* Частые вопросы */}
+        <section aria-labelledby="faq-title" className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8">
+          <div className="lg:col-span-5">
+            <p className={eyebrow}>Перед записью</p>
+            <h2 id="faq-title" className="mt-4 font-serif text-4xl leading-none text-white md:text-5xl">
+              Частые вопросы
+            </h2>
+            {rule}
+          </div>
+          <div className="divide-y divide-white/10 border-y border-white/10 lg:col-span-7">
+            {FAQ.filter((f) => f.a).map((f) => (
+              <details key={f.q} className="group py-1">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-4 text-[15px] text-white/85 transition-colors hover:text-[#E8E6DC] [&::-webkit-details-marker]:hidden">
+                  {f.q}
+                  <span className="relative h-3 w-3 shrink-0" aria-hidden="true">
+                    <span className="absolute left-0 top-1/2 h-px w-3 bg-current" />
+                    <span className="absolute left-1/2 top-0 h-3 w-px bg-current transition-transform duration-300 group-open:scale-y-0" />
+                  </span>
+                </summary>
+                <p className="max-w-[620px] pb-5 text-[14px] leading-relaxed text-white/55">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
       </main>
 
       <SubPageFooter />
 
+      <AnimatePresence>
+        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+/* ---------- Политика конфиденциальности ----------
+ * Шаблон по 152-ФЗ. Перед запуском сайта впишите данные оператора в PRIVACY_OPERATOR.
+ * Если подключите аналитику (Яндекс Метрику) — добавьте про cookies в раздел 8. */
+
+const PRIVACY_OPERATOR = {
+  name: '[ФИО полностью]',
+  status: '[самозанятый / ИП, ИНН]',
+  email: '[e-mail для обращений]',
+  telegram: '@vaaaaaag',
+  site: 'vaag-ph.ru',
+  edition: '26 октября 2026 г.',
+}
+
+function PrivacyPage() {
+  const [dialog, setDialog] = useState<DialogState>(null)
+  const closeDialog = useCallback(() => setDialog(null), [])
+  const o = PRIVACY_OPERATOR
+  const sections: { title: string; body: (string | string[])[] }[] = [
+    {
+      title: '1. Общие положения',
+      body: [
+        `Эта политика описывает, как обрабатываются персональные данные посетителей сайта ${o.site}. Оператор персональных данных — ${o.name}, ${o.status}, e-mail: ${o.email}, Telegram: ${o.telegram}.`,
+        'Политика составлена в соответствии с Федеральным законом от 27.07.2006 № 152-ФЗ «О персональных данных».',
+      ],
+    },
+    {
+      title: '2. Какие данные я получаю',
+      body: [
+        'Только то, что вы сами указываете в форме записи:',
+        ['имя;', 'Telegram или номер телефона;', 'комментарий к заявке (по желанию);', 'выбранные пакет, дату и время съёмки.'],
+        'Для защиты от спама сохраняется необратимый отпечаток (хеш) IP-адреса — сам адрес не хранится.',
+      ],
+    },
+    {
+      title: '3. Зачем',
+      body: [['чтобы принять заявку и закрепить за вами время;', 'чтобы связаться с вами, подтвердить и обсудить съёмку;', 'чтобы провести съёмку и передать фотографии.']],
+    },
+    {
+      title: '4. Основание',
+      body: ['Ваше согласие, которое вы даёте, отмечая галочку в форме записи. Без согласия заявку отправить нельзя.'],
+    },
+    {
+      title: '5. Как хранятся и кому передаются данные',
+      body: [
+        'Заявка сохраняется в базе данных сервиса записи, а уведомление о ней приходит мне в Telegram. Данные не продаются и не передаются третьим лицам, кроме сервисов, без которых запись не работает:',
+        ['Cloudflare — хостинг сайта и база данных заявок;', 'Telegram — уведомление о заявке.'],
+        'Серверы этих сервисов могут находиться за пределами России. Отмечая согласие, вы соглашаетесь и на такую (трансграничную) передачу.',
+      ],
+    },
+    {
+      title: '6. Сколько хранятся',
+      body: ['Не дольше, чем нужно для целей из раздела 3, и не более одного года после даты съёмки. Если вы отзовёте согласие — данные будут удалены в течение 30 дней.'],
+    },
+    {
+      title: '7. Ваши права',
+      body: [
+        `Вы можете узнать, какие ваши данные у меня есть, попросить исправить или удалить их и отозвать согласие. Для этого напишите на ${o.email} или в Telegram ${o.telegram}. Отвечу в течение 10 рабочих дней.`,
+      ],
+    },
+    {
+      title: '8. Cookies и аналитика',
+      body: ['Сайт не использует cookies и сервисы аналитики.'],
+    },
+    {
+      title: '9. Изменения',
+      body: [`Политика может обновляться; актуальная версия всегда на этой странице. Редакция от ${o.edition}`],
+    },
+  ]
+
+  return (
+    <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
+      <SubPageHeader onDialog={setDialog} />
+      <main className="px-6 pb-24 pt-6 md:px-10 lg:px-12 lg:pt-10">
+        <div className="max-w-[720px]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Документы</p>
+          <h1 className="mt-5 font-serif text-5xl leading-[0.95] text-[#E8E6DC] md:text-6xl">Политика конфиденциальности</h1>
+          <span className="mt-6 block h-px w-14 bg-white/25" aria-hidden="true" />
+          <div className="mt-10 flex flex-col gap-10">
+            {sections.map((sec) => (
+              <section key={sec.title}>
+                <h2 className="font-serif text-2xl text-white/90">{sec.title}</h2>
+                <div className="mt-3 flex flex-col gap-3 text-[14.5px] leading-relaxed text-white/65">
+                  {sec.body.map((part, i) =>
+                    Array.isArray(part) ? (
+                      <ul key={i} className="flex flex-col gap-1.5">
+                        {part.map((li) => (
+                          <li key={li} className="flex gap-3">
+                            <span className="text-white/35" aria-hidden="true">—</span>
+                            {li}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p key={i}>{part}</p>
+                    ),
+                  )}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      </main>
+      <SubPageFooter />
       <AnimatePresence>
         {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
       </AnimatePresence>
@@ -1466,6 +1640,9 @@ function ContactsSection({
 
       <footer className="flex flex-col gap-2 text-[11px] text-white/35 sm:flex-row sm:items-center sm:justify-between">
         <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
+        <a href="#privacy" className="underline-offset-4 hover:text-[#E8E6DC] hover:underline">
+          Политика конфиденциальности
+        </a>
         <span>Санкт-Петербург и область</span>
         {!dialog && (
           // «Наверх» внизу: правый верхний угол занят закреплённой кнопкой записи
@@ -1549,7 +1726,7 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
   const [date, setDate] = useState<string | null>(null)
   const [time, setTime] = useState<string | null>(null)
   const [month, setMonth] = useState(window_.first.slice(0, 7))
-  const [form, setForm] = useState({ name: '', contact: '', comment: '', website: '' })
+  const [form, setForm] = useState({ name: '', contact: '', comment: '', website: '', consent: false })
   const [slots, setSlots] = useState<SlotsState>({ status: 'loading' })
   const [send, setSend] = useState<SendState>({ status: 'idle' })
   const [fieldError, setFieldError] = useState<string | null>(null)
@@ -1582,7 +1759,9 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
   const lastMonth = window_.last.slice(0, 7)
 
   const request = (): BookingRequest | null =>
-    date && time ? { packageId, date, time, name: form.name, contact: form.contact, comment: form.comment, website: form.website } : null
+    date && time
+      ? { packageId, date, time, name: form.name, contact: form.contact, comment: form.comment, website: form.website, consent: form.consent }
+      : null
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -1896,6 +2075,26 @@ function BookingFlow({ initialPackage }: { initialPackage?: PackageId }) {
           </fieldset>
         </div>
       </div>
+
+      {/* Согласие на обработку персональных данных (152-ФЗ) */}
+      <label className="-mb-6 flex cursor-pointer items-start gap-3 text-[12.5px] leading-relaxed text-white/60">
+        <input
+          id="booking-consent"
+          type="checkbox"
+          checked={form.consent}
+          onChange={(e) => {
+            setForm({ ...form, consent: e.target.checked })
+            setFieldError(null)
+          }}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[#E8E6DC]"
+        />
+        <span>
+          Соглашаюсь на обработку персональных данных и принимаю{' '}
+          <a href="#privacy" target="_blank" rel="noreferrer" className="text-white/85 underline underline-offset-4 hover:text-[#E8E6DC]">
+            политику конфиденциальности
+          </a>
+        </span>
+      </label>
 
       {/* Итог и отправка */}
       <div className="flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">

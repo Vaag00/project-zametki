@@ -145,6 +145,8 @@ export type BookingRequest = {
   comment: string
   /** Поле-ловушка для ботов: человек его не видит и не заполняет. */
   website?: string
+  /** Согласие на обработку персональных данных (152-ФЗ). Без него заявку не принимаем. */
+  consent: boolean
 }
 
 export const LIMITS = { name: 80, contact: 100, comment: 1000 }
@@ -162,6 +164,7 @@ export function validateBooking(b: Partial<BookingRequest>, now = new Date()): s
   if (name.length > LIMITS.name) return 'Имя слишком длинное.'
   if (contact.length < 3) return 'Оставьте Telegram или телефон, чтобы я мог ответить.'
   if (contact.length > LIMITS.contact) return 'Контакт слишком длинный.'
+  if (b.consent !== true) return 'Отметьте согласие на обработку персональных данных.'
   if (comment.length > LIMITS.comment) return `Комментарий длиннее ${LIMITS.comment} символов.`
   return null
 }

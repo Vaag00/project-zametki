@@ -5,6 +5,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Секреты часто вставляют с лишним переносом строки или пробелом — берём только сам токен
+CLOUDFLARE_API_TOKEN=$(printf '%s' "$CLOUDFLARE_API_TOKEN" | grep -oE '[A-Za-z0-9_-]{30,}' | head -n1 || true)
+TELEGRAM_BOT_TOKEN=$(printf '%s' "$TELEGRAM_BOT_TOKEN" | grep -oE '[0-9]+:[A-Za-z0-9_-]{30,}' | head -n1 || true)
+export CLOUDFLARE_API_TOKEN TELEGRAM_BOT_TOKEN
+[ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::В секрете CLOUDFLARE_API_TOKEN не нашёлся токен Cloudflare."; exit 1; }
+[ -n "$TELEGRAM_BOT_TOKEN" ] || { echo "::error::В секрете TELEGRAM_BOT_TOKEN не нашёлся токен бота (вида 123456789:AA…)."; exit 1; }
+
 WORKER=vaag-bot
 DATABASE=vaag-bot
 

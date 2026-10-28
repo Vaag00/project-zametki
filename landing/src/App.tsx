@@ -41,6 +41,9 @@ const ACCENT = '#E8E6DC'
 const TELEGRAM_CHANNEL = 'https://t.me/Vaag_ph'
 const TELEGRAM_PERSONAL = 'https://t.me/vaaaaaag'
 const INSTAGRAM = 'https://instagram.com/vaag.ph'
+const OWNER_NAME = 'Малхасян Ваагн'
+const PHONE = '+7 (911) 759-63-38'
+const PHONE_HREF = 'tel:+79117596338'
 /** Адрес сайта — из SITE_URL при сборке (бесплатный домен или свой). */
 const SITE = import.meta.env.VITE_SITE_URL as string
 const SITE_HOST = SITE.replace(/^https?:\/\//, '')
@@ -1786,7 +1789,9 @@ function Lightbox({
 
 /* ---------- Контакты: отдельный экран после сцены ---------- */
 
-const CONTACTS = [
+const CONTACTS: { label: string; value: string; href?: string }[] = [
+  { label: 'Фотограф', value: OWNER_NAME },
+  { label: 'Телефон', value: PHONE, href: PHONE_HREF },
   { label: 'Telegram', value: '@vaaaaaag', href: TELEGRAM_PERSONAL },
   { label: 'Instagram', value: '@vaag.ph', href: INSTAGRAM },
   { label: 'Канал', value: 't.me/Vaag_ph', href: TELEGRAM_CHANNEL },
@@ -2649,13 +2654,21 @@ function BookButton({ onClick, placeholder = false }: { onClick?: () => void; pl
   )
 }
 
-function ContactRow({ label, value, href }: { label: string; value: string; href: string }) {
+function ContactRow({ label, value, href }: { label: string; value: string; href?: string }) {
+  if (!href)
+    return (
+      <li className="flex items-center justify-between py-5 text-white/80">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/40">{label}</span>
+        <span>{value}</span>
+      </li>
+    )
+  // Телефон открывается звонком в этой же вкладке, остальное — в новой
+  const external = !href.startsWith('tel:')
   return (
     <li>
       <a
         href={href}
-        target="_blank"
-        rel="noreferrer"
+        {...(external ? { target: '_blank', rel: 'noreferrer' } : {})}
         className="group flex items-center justify-between py-5 text-white/80 transition-colors duration-300 hover:text-[#E8E6DC]"
       >
         <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/40">{label}</span>

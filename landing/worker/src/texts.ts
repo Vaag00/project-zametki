@@ -93,6 +93,8 @@ export function contactsMessage(site: string): string {
   return [
     '✉️ <b>Контакты</b>',
     '',
+    'Фотограф: Малхасян Ваагн',
+    'Телефон: +7 (911) 759-63-38',
     `Telegram: @${OWNER_TELEGRAM}`,
     `Instagram: <a href="https://instagram.com/${INSTAGRAM}">@${INSTAGRAM}</a>`,
     `Канал: https://t.me/${CHANNEL}`,

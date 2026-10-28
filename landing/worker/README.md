@@ -37,8 +37,8 @@
 ### 2. Cloudflare
 
 1. Зарегистрируйтесь на [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) — нужна только почта, подтвердите её.
-2. Слева откройте **Workers & Pages** (если спросит адрес вида `*.workers.dev` — придумайте любой, например `vaag-ph`).
-3. **Account ID:** на главной странице аккаунта справа (или в Workers & Pages справа) — скопируйте.
+2. Account ID (`975b89a97441d9f64a28394e7fde8a1c`) уже вписан в `wrangler.toml` и `.github/workflows/*.yml`.
+   Если смените учётную запись — замените его там (он виден в адресе страницы: `dash.cloudflare.com/<Account ID>/…`).
 
 ### 3. Токен доступа для GitHub
 
@@ -51,12 +51,11 @@
 
 ### 4. Секреты в GitHub
 
-Репозиторий → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**, три секрета:
+Репозиторий → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**, два секрета:
 
 | Name | Secret |
 |------|--------|
 | `CLOUDFLARE_API_TOKEN` | токен из шага 3 |
-| `CLOUDFLARE_ACCOUNT_ID` | Account ID из шага 2 |
 | `TELEGRAM_BOT_TOKEN` | токен от BotFather |
 
 ### 5. Запуск

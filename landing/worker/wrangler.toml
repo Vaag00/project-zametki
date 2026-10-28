@@ -3,6 +3,8 @@ name = "vaag-bot"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 workers_dev = true
+# Учётная запись Cloudflare (не секрет)
+account_id = "975b89a97441d9f64a28394e7fde8a1c"
 
 [vars]
 OWNER_USERNAME = "vaaaaaag"

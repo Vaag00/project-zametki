@@ -1,5 +1,5 @@
 # Сайт фотографа (landing/) на GitHub Pages — бесплатно, без сервера.
-# Если бот в Cloudflare уже развёрнут (секреты CLOUDFLARE_* есть и Worker vaag-bot отвечает), запись на сайте идёт через него:
+# Если бот в Cloudflare уже развёрнут (секрет CLOUDFLARE_API_TOKEN есть и Worker vaag-bot отвечает), запись на сайте идёт через него:
 # заявки сохраняются, занятые окошки скрываются, вам приходит сообщение в Telegram.
 # Иначе — демо-режим: запись отправляет готовый текст заявки в Telegram. Админки на GitHub Pages нет.
 # Собранный сайт кладётся в ветку gh-pages — из неё GitHub Pages и показывает сайт.
@@ -35,7 +35,7 @@ jobs:
       - name: Адрес бота
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: 975b89a97441d9f64a28394e7fde8a1c
         run: |
           url=""
           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then

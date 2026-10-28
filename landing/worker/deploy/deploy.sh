@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Развёртывание бота в Cloudflare: база D1, Worker, вебхук Telegram.
 # Повторный запуск безопасен: база создаётся только в первый раз, заявки сохраняются.
-# Нужны: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, TELEGRAM_BOT_TOKEN.
+# Нужны: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (задан в bot.yml), TELEGRAM_BOT_TOKEN.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

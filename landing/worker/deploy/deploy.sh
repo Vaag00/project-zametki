@@ -63,9 +63,14 @@ url="${WORKER_URL:-https://$WORKER.$sub.workers.dev}"
 echo "Worker: $url"
 
 # ---- Проверка: Worker отвечает и видит базу (новый адрес workers.dev может появиться не сразу) ----
-for attempt in $(seq 1 12); do
-  curl -sSf "$url/?r=slots" -o /dev/null 2>/dev/null && break
-  [ "$attempt" = 12 ] && { echo "::error::Worker не отвечает: $url. Логи — панель Cloudflare → Workers & Pages → $WORKER → Logs"; exit 1; }
+for attempt in $(seq 1 30); do
+  code=$(curl -sS -o /tmp/worker-check.txt -w '%{http_code}' "$url/?r=slots" 2>/tmp/worker-curl.txt || true)
+  [ "$code" = 200 ] && break
+  if [ "$attempt" = 30 ]; then
+    echo "Последний ответ: HTTP $code"; head -c 500 /tmp/worker-check.txt; cat /tmp/worker-curl.txt
+    echo "::error::Worker не отвечает: $url. Логи — панель Cloudflare → Workers → vaag-bot → Logs"; exit 1
+  fi
+  [ $((attempt % 6)) = 0 ] && echo "Жду, пока заработает адрес (HTTP $code)…"
   sleep 10
 done
 echo "Worker работает, база подключена"

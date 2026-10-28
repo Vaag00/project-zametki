@@ -237,7 +237,19 @@ export class Bot {
 
   async handleUpdate(upd: Update): Promise<void> {
     if (upd.callback_query) await this.onCallback(upd.callback_query)
-    else if (upd.message) await this.onMessage(upd.message)
+    else if (upd.message) {
+      this.incoming = null
+      try {
+        await this.onMessage(upd.message)
+      } finally {
+        // Команду клиента убираем уже после ответа — так чат не пустеет и не прыгает
+        const incoming = this.incoming as { chat: number; id: number } | null // присваивается в onMessage
+        if (incoming) {
+          await this.deleteMessages(incoming.chat, [incoming.id])
+          await this.store.putJson(`uitop:${incoming.chat}`, Math.max(await this.screenTop(incoming.chat), incoming.id))
+        }
+      }
+    }
   }
 
   async isOwner(chatId: number): Promise<boolean> {
@@ -269,8 +281,10 @@ export class Bot {
 
   /** Нажатое сообщение с кнопками (при нажатии кнопки) или null. */
   private pressed: number | null = null
-  /** Ответ на ввод текста в шаге записи — окно над ним, его можно обновить на месте. */
+  /** Окно стоит прямо над сообщением клиента — после удаления сообщения его можно обновить на месте. */
   private inPlace = false
+  /** Сообщение клиента (команда или ответ на шаг записи), которое уберём после ответа. */
+  private incoming: { chat: number; id: number } | null = null
 
   private screen(chatId: number) {
     return this.store.getJson<number[]>(`ui:${chatId}`, [])
@@ -278,6 +292,11 @@ export class Bot {
 
   private setScreen(chatId: number, ids: number[]) {
     return this.store.putJson(`ui:${chatId}`, ids.length ? ids : null)
+  }
+
+  /** Последнее сообщение внизу чата, которое наше: окно или уже удалённое сообщение клиента. */
+  private async screenTop(chatId: number): Promise<number> {
+    return Math.max((await this.screen(chatId)).at(-1) ?? 0, await this.store.getJson<number>(`uitop:${chatId}`, 0))
   }
 
   private async deleteMessages(chatId: number, ids: number[]): Promise<void> {
@@ -296,8 +315,9 @@ export class Bot {
       await this.setScreen(chatId, opts.keep ? [] : [main])
       return
     }
-    await this.deleteMessages(chatId, old)
+    // Сначала новое сообщение, потом удаляем старое — чат ни на миг не остаётся пустым
     const id = await this.tg.send(chatId, text, buttons)
+    await this.deleteMessages(chatId, old)
     await this.setScreen(chatId, opts.keep || id === null ? [] : [id])
   }
 
@@ -312,8 +332,11 @@ export class Bot {
     const text = (msg.text ?? '').trim()
     const st = await this.state(chatId)
     // Команды и ответы на шаги записи убираем из переписки; обычный текст оставляем — вдруг это вопрос
-    if (text.startsWith('/') || st.step === 'name' || st.step === 'comment') {
-      if (msg.message_id) await this.deleteMessages(chatId, [msg.message_id])
+    if (msg.message_id && (text.startsWith('/') || st.step === 'name' || st.step === 'comment')) {
+      this.incoming = { chat: chatId, id: msg.message_id }
+      // id сообщений в личном чате идут подряд: окно прямо над командой — значит, оно внизу чата
+      // (удалённые нами сообщения клиента номера тоже занимали)
+      this.inPlace = (await this.screen(chatId)).length > 0 && (await this.screenTop(chatId)) === msg.message_id - 1
     }
     const [rawCmd, ...rest] = text.split(/\s+/)
     const cmd = rawCmd.split('@')[0].toLowerCase()
@@ -336,7 +359,6 @@ export class Bot {
     if (cmd in OWNER_COMMANDS && (await this.isOwner(chatId))) return OWNER_COMMANDS[cmd](this, chatId, arg)
 
     if (text && !text.startsWith('/')) {
-      this.inPlace = true
       if (st.step === 'name') {
         if (text.length > LIMITS.name) return this.askName(chatId, st, msg.from ?? {}, 'Имя слишком длинное — напишите покороче.')
         return this.askComment(chatId, { ...st, name: text })
@@ -346,7 +368,6 @@ export class Bot {
           return this.askComment(chatId, st, `Комментарий длиннее ${LIMITS.comment} символов — сократите, пожалуйста.`)
         return this.askConfirm(chatId, { ...st, comment: text })
       }
-      this.inPlace = false
     }
     await this.show(chatId, `Я бот для записи на съёмку. Написать мне лично: @${OWNER_TELEGRAM}`, MENU)
   }
@@ -364,8 +385,8 @@ export class Bot {
   }
 
   async sendPortfolio(chatId: number): Promise<void> {
-    // Альбом нельзя вставить в старое сообщение — убираем окно и рисуем альбом с кнопками заново внизу
-    await this.deleteMessages(chatId, await this.screen(chatId))
+    // Альбом нельзя вставить в старое сообщение — рисуем альбом с кнопками внизу, потом убираем старое окно
+    const old = await this.screen(chatId)
     const ids: number[] = []
     const photos = portfolioPhotos(this.site)
     if (photos.length) {
@@ -379,6 +400,7 @@ export class Bot {
       [btn('← В меню', 'm')],
     ])
     if (id !== null) ids.push(id)
+    await this.deleteMessages(chatId, old)
     await this.setScreen(chatId, ids)
   }
 

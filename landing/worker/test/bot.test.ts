@@ -63,9 +63,12 @@ beforeEach(() => {
   bot = makeBot({ DB: memoryD1(), TELEGRAM_BOT_TOKEN: tg.token, BOT_USERNAME: 'vaag_test_bot' }, tg)
 })
 
-const message = (chat: number, text: string, username = 'client') => ({
-  message: { chat: { id: chat, type: 'private' }, from: { id: chat, first_name: 'Аня', username }, text },
-})
+/** Сообщение от человека. id сообщений в чате идут подряд, как в Telegram. */
+const message = (chat: number, text: string, username = 'client') => {
+  const id = ++tg.nextId
+  tg.see(chat, id)
+  return { message: { message_id: id, chat: { id: chat, type: 'private' }, from: { id: chat, first_name: 'Аня', username }, text } }
+}
 /** Нажатие кнопки на последнем сообщении чата (или на сообщении messageId). */
 const press = (chat: number, d: string, username = 'client', messageId?: number) => ({
   callback_query: {
@@ -280,10 +283,33 @@ describe('окно бота', () => {
     expect(tg.last(CLIENT).text).toContain('Что дальше')
 
     // команда, набранная вручную, убирает старое окно и своё сообщение
-    await bot.handleUpdate({ message: { ...message(CLIENT, '/price').message, message_id: 999 } })
+    tg.nextId += 3 // окно уже не внизу: между ним и командой другие сообщения
+    const cmd = message(CLIENT, '/price').message
+    await bot.handleUpdate({ message: cmd })
     expect(visible(CLIENT)).toHaveLength(1)
     expect(visible(CLIENT)).not.toContain(textId)
-    expect(tg.calls).toContainEqual(['deleteMessages', { chat_id: CLIENT, message_ids: [999] }])
+    expect(tg.calls).toContainEqual(['deleteMessages', { chat_id: CLIENT, message_ids: [cmd.message_id] }])
+  })
+
+  it('повторный /start обновляет меню на месте: чат не пустеет и не мигает', async () => {
+    await bot.handleUpdate(message(CLIENT, '/start'))
+    const menuId = tg.last(CLIENT).id
+    const cmd = message(CLIENT, '/start').message
+    expect(cmd.message_id).toBe(menuId + 1)
+    await bot.handleUpdate({ message: cmd })
+    expect(visible(CLIENT)).toEqual([menuId]) // то же сообщение, команда убрана
+    const order = tg.calls.filter(([m]) => m === 'deleteMessages').at(-1)!
+    expect(order[1]).toEqual({ chat_id: CLIENT, message_ids: [cmd.message_id] })
+  })
+
+  it('новое окно приходит раньше, чем удаляется старое', async () => {
+    await bot.handleUpdate(message(CLIENT, '/start'))
+    const menuId = tg.last(CLIENT).id
+    tg.nextId += 5 // между меню и командой есть другие сообщения
+    await bot.handleUpdate(message(CLIENT, '/price'))
+    const sentAt = tg.log.findIndex((m) => m.chat === CLIENT && m.text.includes('Прайс'))
+    expect(sentAt).toBeGreaterThan(-1)
+    expect(visible(CLIENT)).not.toContain(menuId)
   })
 
   it('шаги записи идут в одном сообщении, подтверждение остаётся в переписке', async () => {

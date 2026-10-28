@@ -260,7 +260,8 @@ function useModal(
   useEffect(() => {
     if (!active) return
     lockScroll()
-    focusRef.current?.focus()
+    // preventScroll: Safari иначе прокручивает окно к кнопке фокуса уже после нашей прокрутки к разделу
+    focusRef.current?.focus({ preventScroll: true })
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
       else onKeyRef.current?.(e)
@@ -1829,9 +1830,28 @@ function ContactsSection({
 
   useModal(dialog, onClose ?? noop, closeRef)
 
-  // Окно открыли кнопкой «Контакты» или «Обо мне» — сразу показываем этот раздел
+  // Окно открыли кнопкой «Контакты» или «Обо мне» — сразу показываем этот раздел.
+  // Запись выше по окну догружает календарь с сервера и растёт — пока человек сам не листал,
+  // снова подводим раздел к верху, чтобы его не сдвинуло вниз.
   useEffect(() => {
-    if (dialog && section !== 'booking') document.getElementById(`dlg-${section}`)?.scrollIntoView({ block: 'start' })
+    if (!dialog || section === 'booking') return
+    const target = () => document.getElementById(`dlg-${section}`)
+    const show = () => target()?.scrollIntoView({ block: 'start' })
+    const frame = requestAnimationFrame(show)
+    const booking = document.getElementById('dlg-booking')
+    const scroller = target()?.closest('[role="dialog"]')
+    const resize = new ResizeObserver(show)
+    if (booking) resize.observe(booking)
+    const stop = () => resize.disconnect()
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+    events.forEach((e) => scroller?.addEventListener(e, stop, { passive: true }))
+    const timer = setTimeout(stop, 4000)
+    return () => {
+      cancelAnimationFrame(frame)
+      clearTimeout(timer)
+      stop()
+      events.forEach((e) => scroller?.removeEventListener(e, stop))
+    }
   }, [dialog, section])
 
   const appear = dialog

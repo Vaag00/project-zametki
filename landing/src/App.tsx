@@ -1016,6 +1016,12 @@ function SubPageHeader({ current, onDialog }: { current?: 'portfolio' | 'price';
               <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
             </button>
           </li>
+          <li>
+            <button type="button" onClick={() => onDialog({ section: 'contacts' })} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
+              Контакты
+              <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
+            </button>
+          </li>
         </ul>
         <span className="hidden h-5 w-px bg-white/15 md:block" aria-hidden="true" />
         <div className="hidden items-center gap-4 sm:flex">
@@ -1830,29 +1836,11 @@ function ContactsSection({
 
   useModal(dialog, onClose ?? noop, closeRef)
 
-  // Окно открыли кнопкой «Контакты» или «Обо мне» — сразу показываем этот раздел.
-  // Запись выше по окну догружает календарь с сервера и растёт — пока человек сам не листал,
-  // снова подводим раздел к верху, чтобы его не сдвинуло вниз.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // Каждая кнопка открывает своё окно: запись, «Обо мне» или контакты — всегда с начала
   useEffect(() => {
-    if (!dialog || section === 'booking') return
-    const target = () => document.getElementById(`dlg-${section}`)
-    const show = () => target()?.scrollIntoView({ block: 'start' })
-    const frame = requestAnimationFrame(show)
-    const booking = document.getElementById('dlg-booking')
-    const scroller = target()?.closest('[role="dialog"]')
-    const resize = new ResizeObserver(show)
-    if (booking) resize.observe(booking)
-    const stop = () => resize.disconnect()
-    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
-    events.forEach((e) => scroller?.addEventListener(e, stop, { passive: true }))
-    const timer = setTimeout(stop, 4000)
-    return () => {
-      cancelAnimationFrame(frame)
-      clearTimeout(timer)
-      stop()
-      events.forEach((e) => scroller?.removeEventListener(e, stop))
-    }
-  }, [dialog, section])
+    dialogRef.current?.scrollTo({ top: 0 })
+  }, [section])
 
   const appear = dialog
     ? { initial: { opacity: 0, y: 30 }, animate: { opacity: 1, y: 0 } }
@@ -1875,10 +1863,9 @@ function ContactsSection({
         ) : null}
       </div>
 
-      {dialog && (
+      {dialog && section === 'booking' && (
         <motion.section
           id="dlg-booking"
-          className="scroll-mt-6 border-b border-white/10 pb-16"
           aria-labelledby="booking-title"
           {...appear}
           transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
@@ -1887,10 +1874,10 @@ function ContactsSection({
         </motion.section>
       )}
 
-      {dialog && (
+      {dialog && section === 'about' && (
         <motion.section
           id="dlg-about"
-          className="grid scroll-mt-6 grid-cols-1 gap-8 border-b border-white/10 pb-16 lg:grid-cols-12"
+          className="grid grid-cols-1 gap-8 lg:grid-cols-12"
           aria-labelledby="about-title"
           {...appear}
           transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
@@ -1948,52 +1935,54 @@ function ContactsSection({
         </motion.section>
       )}
 
-      <div id={dialog ? 'dlg-contacts' : undefined} className="grid scroll-mt-6 grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
-        <motion.div
-          className="lg:col-span-7"
-          {...appear}
-          transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Контакты</p>
-          <h2
-            id={titleId}
-            className="mt-5 font-serif uppercase leading-[0.88] text-[#E8E6DC]"
-            style={{ fontSize: 'clamp(2.5rem, 5.6vw, 7.5rem)' }}
+      {(!dialog || section === 'contacts') && (
+        <div id={dialog ? 'dlg-contacts' : undefined} className="grid grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
+          <motion.div
+            className="lg:col-span-7"
+            {...appear}
+            transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
           >
-            Напиши мне —
-            <br />
-            <em className="italic">договоримся</em>
-            <br />
-            <em className="italic">о тишине</em>
-          </h2>
-          <p className="mt-8 max-w-[420px] text-[13px] leading-relaxed text-white/55">
-            Расскажи идею и удобные даты. Подберу локацию, время и пакет под настроение, которое хочется
-            сохранить.
-          </p>
-          <a
-            href={TELEGRAM_PERSONAL}
-            target="_blank"
-            rel="noreferrer"
-            className="group mt-8 inline-flex items-center gap-3 rounded-full border border-white/20 px-6 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E8E6DC] opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#E8E6DC] transition-colors duration-300 group-hover:bg-[#121212]" />
-            </span>
-            Написать в Telegram
-          </a>
-        </motion.div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Контакты</p>
+            <h2
+              id={titleId}
+              className="mt-5 font-serif uppercase leading-[0.88] text-[#E8E6DC]"
+              style={{ fontSize: 'clamp(2.5rem, 5.6vw, 7.5rem)' }}
+            >
+              Напиши мне —
+              <br />
+              <em className="italic">договоримся</em>
+              <br />
+              <em className="italic">о тишине</em>
+            </h2>
+            <p className="mt-8 max-w-[420px] text-[13px] leading-relaxed text-white/55">
+              Расскажи идею и удобные даты. Подберу локацию, время и пакет под настроение, которое хочется
+              сохранить.
+            </p>
+            <a
+              href={TELEGRAM_PERSONAL}
+              target="_blank"
+              rel="noreferrer"
+              className="group mt-8 inline-flex items-center gap-3 rounded-full border border-white/20 px-6 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E8E6DC] opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#E8E6DC] transition-colors duration-300 group-hover:bg-[#121212]" />
+              </span>
+              Написать в Telegram
+            </a>
+          </motion.div>
 
-        <motion.ul
-          className="divide-y divide-white/10 border-y border-white/10 text-[15px] lg:col-span-5"
-          {...appear}
-          transition={{ duration: 1.1, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-        >
-          {CONTACTS.map((c) => (
-            <ContactRow key={c.label} {...c} />
-          ))}
-        </motion.ul>
-      </div>
+          <motion.ul
+            className="divide-y divide-white/10 border-y border-white/10 text-[15px] lg:col-span-5"
+            {...appear}
+            transition={{ duration: 1.1, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {CONTACTS.map((c) => (
+              <ContactRow key={c.label} {...c} />
+            ))}
+          </motion.ul>
+        </div>
+      )}
 
       <footer className="flex flex-col gap-2 text-[11px] text-white/35 sm:flex-row sm:items-center sm:justify-between">
         <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
@@ -2021,9 +2010,10 @@ function ContactsSection({
   if (dialog) {
     return (
       <motion.div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="booking-title"
+        aria-labelledby={section === 'booking' ? 'booking-title' : section === 'about' ? 'about-title' : titleId}
         className={`fixed inset-0 z-[60] overflow-y-auto ${layout}`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

@@ -350,7 +350,7 @@ export class Bot {
     }
     if (cmd === '/price') return this.sendPrice(chatId)
     if (cmd === '/portfolio') return this.sendPortfolio(chatId)
-    if (cmd === '/contacts') return this.show(chatId, contactsMessage(this.site), BACK_TO_MENU)
+    if (cmd === '/contacts') return this.sendContacts(chatId)
     if (cmd === '/my') return this.myBookings(chatId)
     if (cmd === '/cancel') {
       await this.setState(chatId, null)
@@ -378,6 +378,21 @@ export class Bot {
       : 'Что дальше?'
     if (greeting && (await this.isOwner(chatId))) text += `\n\n${OWNER_HELP}`
     await this.show(chatId, text, MENU)
+  }
+
+  /** Контакты — фото фотографа с подписью; если фото не загрузилось, просто текст. */
+  async sendContacts(chatId: number): Promise<void> {
+    const sent = (await this.tg.call('sendPhoto', {
+      chat_id: chatId,
+      photo: `${this.site}/about.jpg`,
+      caption: contactsMessage(this.site),
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: BACK_TO_MENU },
+    })) as { message_id: number } | null
+    if (!sent?.message_id) return this.show(chatId, contactsMessage(this.site), BACK_TO_MENU)
+    // Фото нельзя вставить в текстовое сообщение — новое окно внизу, старое убираем
+    await this.deleteMessages(chatId, await this.screen(chatId))
+    await this.setScreen(chatId, [sent.message_id])
   }
 
   async sendPrice(chatId: number): Promise<void> {
@@ -559,7 +574,7 @@ export class Bot {
         await this.sendPortfolio(chatId)
         break
       case 'ct':
-        await this.show(chatId, contactsMessage(this.site), BACK_TO_MENU)
+        await this.sendContacts(chatId)
         break
       case 'my':
         await this.myBookings(chatId)

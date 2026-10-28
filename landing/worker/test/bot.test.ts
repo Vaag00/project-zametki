@@ -27,6 +27,11 @@ class FakeTelegram implements TelegramApi {
         return { message_id: this.nextId }
       })
     }
+    if (method === 'sendPhoto') {
+      this.log.push({ chat, text: params.caption as string, buttons: [], id: ++this.nextId })
+      this.see(chat, this.nextId)
+      return { message_id: this.nextId }
+    }
     if (method === 'deleteMessages') for (const id of params.message_ids as number[]) this.visible.get(chat)?.delete(id)
     return true
   }
@@ -257,6 +262,8 @@ describe('запись в боте', () => {
     expect(params.media[0].media).toMatch(/\/portfolio\/forest-road\.jpg$/)
     await bot.handleUpdate(message(CLIENT, '/contacts'))
     expect(tg.last(CLIENT).text).toContain('@vaaaaaag')
+    const [, photo] = tg.calls.filter(([m]) => m === 'sendPhoto').at(-1)! as [string, { photo: string }]
+    expect(photo.photo).toMatch(/\/about\.jpg$/)
   })
 })
 
@@ -289,6 +296,19 @@ describe('окно бота', () => {
     expect(visible(CLIENT)).toHaveLength(1)
     expect(visible(CLIENT)).not.toContain(textId)
     expect(tg.calls).toContainEqual(['deleteMessages', { chat_id: CLIENT, message_ids: [cmd.message_id] }])
+  })
+
+  it('контакты с фото: меню заменяется фото, «В меню» — снова текстом', async () => {
+    await bot.handleUpdate(message(CLIENT, '/start'))
+    const menuId = tg.last(CLIENT).id
+    await bot.handleUpdate(press(CLIENT, 'ct', 'client', menuId))
+    const photoId = tg.last(CLIENT).id
+    expect(visible(CLIENT)).toEqual([photoId])
+    // в фото нельзя вписать текст — меню приходит новым сообщением, фото удаляется
+    tg.edit = async () => false
+    await bot.handleUpdate(press(CLIENT, 'm', 'client', photoId))
+    expect(visible(CLIENT)).toHaveLength(1)
+    expect(visible(CLIENT)).not.toContain(photoId)
   })
 
   it('повторный /start обновляет меню на месте: чат не пустеет и не мигает', async () => {

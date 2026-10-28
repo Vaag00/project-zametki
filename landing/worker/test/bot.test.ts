@@ -16,15 +16,31 @@ class FakeTelegram implements TelegramApi {
   log: Sent[] = []
   calls: [string, unknown][] = []
   nextId = 1
+  /** Сообщения, которые сейчас видны в чате (без удалённых). */
+  visible = new Map<number, Set<number>>()
   async call(method: string, params: Record<string, unknown>) {
     this.calls.push([method, params])
-    return []
+    const chat = params.chat_id as number
+    if (method === 'sendMediaGroup') {
+      return (params.media as unknown[]).map(() => {
+        this.see(chat, ++this.nextId)
+        return { message_id: this.nextId }
+      })
+    }
+    if (method === 'deleteMessages') for (const id of params.message_ids as number[]) this.visible.get(chat)?.delete(id)
+    return true
+  }
+  see(chat: number, id: number) {
+    if (!this.visible.has(chat)) this.visible.set(chat, new Set())
+    this.visible.get(chat)!.add(id)
   }
   async send(chat: number, text: string, buttons: Keyboard = []) {
     this.log.push({ chat, text, buttons, id: ++this.nextId })
+    this.see(chat, this.nextId)
     return this.nextId
   }
   async edit(chat: number, id: number, text: string, buttons: Keyboard = []) {
+    if (!this.visible.get(chat)?.has(id)) return false
     this.log.push({ chat, text, buttons, id })
     return true
   }
@@ -50,8 +66,14 @@ beforeEach(() => {
 const message = (chat: number, text: string, username = 'client') => ({
   message: { chat: { id: chat, type: 'private' }, from: { id: chat, first_name: 'Аня', username }, text },
 })
-const press = (chat: number, d: string, username = 'client') => ({
-  callback_query: { id: 'cb', data: d, from: { id: chat, first_name: 'Аня', username }, message: { message_id: 50, chat: { id: chat, type: 'private' } } },
+/** Нажатие кнопки на последнем сообщении чата (или на сообщении messageId). */
+const press = (chat: number, d: string, username = 'client', messageId?: number) => ({
+  callback_query: {
+    id: 'cb',
+    data: d,
+    from: { id: chat, first_name: 'Аня', username },
+    message: { message_id: messageId ?? tg.log.filter((m) => m.chat === chat).at(-1)?.id ?? 50, chat: { id: chat, type: 'private' } },
+  },
 })
 const registerOwner = () => bot.handleUpdate(message(OWNER, '/start', 'Vaaaaaag'))
 
@@ -232,6 +254,53 @@ describe('запись в боте', () => {
     expect(params.media[0].media).toMatch(/\/portfolio\/forest-road\.jpg$/)
     await bot.handleUpdate(message(CLIENT, '/contacts'))
     expect(tg.last(CLIENT).text).toContain('@vaaaaaag')
+  })
+})
+
+describe('окно бота', () => {
+  const visible = (chat: number) => [...(tg.visible.get(chat) ?? [])]
+
+  it('портфолио → записаться → меню: старые сообщения заменяются, переписка не растёт', async () => {
+    await bot.handleUpdate(message(CLIENT, '/start'))
+    const menuId = tg.last(CLIENT).id
+    expect(visible(CLIENT)).toEqual([menuId])
+
+    await bot.handleUpdate(press(CLIENT, 'pf', 'client', menuId))
+    const albumAndText = visible(CLIENT)
+    expect(albumAndText).not.toContain(menuId) // меню удалено
+    expect(albumAndText.length).toBe(6) // 5 фото + сообщение с кнопками
+    const textId = tg.last(CLIENT).id
+
+    await bot.handleUpdate(press(CLIENT, 'bk', 'client', textId))
+    expect(visible(CLIENT)).toEqual([textId]) // альбом удалён, кнопки стали выбором пакета
+    expect(tg.last(CLIENT).text).toContain('Выберите пакет')
+
+    await bot.handleUpdate(press(CLIENT, 'm', 'client', textId))
+    expect(visible(CLIENT)).toEqual([textId])
+    expect(tg.last(CLIENT).text).toContain('Что дальше')
+
+    // команда, набранная вручную, убирает старое окно и своё сообщение
+    await bot.handleUpdate({ message: { ...message(CLIENT, '/price').message, message_id: 999 } })
+    expect(visible(CLIENT)).toHaveLength(1)
+    expect(visible(CLIENT)).not.toContain(textId)
+    expect(tg.calls).toContainEqual(['deleteMessages', { chat_id: CLIENT, message_ids: [999] }])
+  })
+
+  it('шаги записи идут в одном сообщении, подтверждение остаётся в переписке', async () => {
+    const { day, time } = await firstFree()
+    await bot.handleUpdate(message(CLIENT, '/book'))
+    const id = tg.last(CLIENT).id
+    await bot.handleUpdate(press(CLIENT, `t:standard:${day}:${time}`, 'client', id))
+    await bot.handleUpdate(message(CLIENT, 'Анна'))
+    await bot.handleUpdate(message(CLIENT, 'Хочу в лес'))
+    expect(visible(CLIENT)).toEqual([id])
+    await bot.handleUpdate(press(CLIENT, 'ok', 'client', id))
+    expect(tg.last(CLIENT).text).toContain('Заявка получена')
+
+    // после «В меню» подтверждение не стирается — меню приходит новым сообщением
+    await bot.handleUpdate(press(CLIENT, 'm', 'client', id))
+    expect(visible(CLIENT)).toContain(id)
+    expect(visible(CLIENT)).toHaveLength(2)
   })
 })
 

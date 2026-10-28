@@ -1,0 +1,34 @@
+# Запуск на сервере: docker compose up -d --build   (настройки — в файле .env, пример — .env.example)
+services:
+  app:
+    build:
+      context: .
+      args:
+        SITE_URL: ${SITE_URL}
+    env_file: .env
+    environment:
+      COOKIE_SECURE: "1"
+    volumes:
+      - data:/data            # база и загруженные фото — переживают обновления
+    restart: unless-stopped
+
+  # Caddy: HTTPS-сертификат Let's Encrypt выпускает и продлевает сам
+  caddy:
+    image: caddy:2-alpine
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

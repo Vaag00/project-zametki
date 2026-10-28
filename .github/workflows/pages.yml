@@ -1,0 +1,68 @@
+# Сайт фотографа (landing/) на GitHub Pages — бесплатно, без сервера.
+# Если бот в Cloudflare уже развёрнут (секрет CLOUDFLARE_API_TOKEN есть и Worker vaag-bot отвечает), запись на сайте идёт через него:
+# заявки сохраняются, занятые окошки скрываются, вам приходит сообщение в Telegram.
+# Иначе — демо-режим: запись отправляет готовый текст заявки в Telegram. Админки на GitHub Pages нет.
+# Собранный сайт кладётся в ветку gh-pages — из неё GitHub Pages и показывает сайт.
+# Запускается при изменениях в landing/ на ветке main, после развёртывания бота или вручную (Actions → Run workflow).
+name: Сайт на GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['landing/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - name: Адрес бота
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 975b89a97441d9f64a28394e7fde8a1c
+        run: |
+          url=""
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            sub=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).result.subdomain)}catch{}})")
+            # Бот развёрнут, если его Worker отвечает
+            if [ -n "$sub" ] && curl -sSf -m 15 "https://vaag-bot.$sub.workers.dev/?r=content" -o /dev/null; then
+              url="https://vaag-bot.$sub.workers.dev/"
+            fi
+          fi
+          if [ -n "$url" ]; then
+            echo "Запись через бота: $url"
+            { echo "VITE_API_BASE=$url"; echo "VITE_API_CLOUD=1"; } >> "$GITHUB_ENV"
+          else
+            echo "Бот не развёрнут — сайт в демо-режиме"
+            echo "VITE_DEMO=1" >> "$GITHUB_ENV"
+          fi
+      - run: npm ci
+      # Относительные пути (--base ./): сайт работает и на своём домене, и по адресу <user>.github.io/<repo>/
+      - run: npm run build -- --base ./
+        env:
+          VITE_SITE_URL: https://vaag-ph.duckdns.org
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: landing/dist
+          publish_branch: gh-pages
+          # Свой домен (DuckDNS указывает на GitHub Pages 185.199.108.153)
+          cname: vaag-ph.duckdns.org

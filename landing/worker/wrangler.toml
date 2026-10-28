@@ -1,0 +1,17 @@
+# Cloudflare Worker: бот Telegram и запись на съёмку. Разворачивается сценарием .github/workflows/bot.yml.
+name = "vaag-bot"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+workers_dev = true
+# Учётная запись Cloudflare (не секрет)
+account_id = "975b89a97441d9f64a28394e7fde8a1c"
+
+[vars]
+OWNER_USERNAME = "vaaaaaag"
+SITE_URL = "https://vaag-ph.duckdns.org"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vaag-bot"
+# Подставляется при развёртывании (deploy.sh) — у каждой учётной записи Cloudflare свой
+database_id = "00000000-0000-0000-0000-000000000000"

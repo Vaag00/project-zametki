@@ -1,0 +1,9 @@
+node_modules
+dist
+server/.venv
+server/data
+server/tests
+server/.pytest_cache
+worker
+.env
+*.md

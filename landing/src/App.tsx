@@ -179,7 +179,7 @@ function useServerContent(): Content {
 const NAV = [
   { label: 'Портфолио', target: 'portfolio' as const },
   { label: 'Прайс', target: 'price' as const },
-  { label: 'Обо мне', target: 0.7 },
+  { label: 'Обо мне', target: 'about' as const },
   { label: 'Контакты', target: 'contacts' as const },
 ]
 
@@ -199,6 +199,7 @@ function plural(n: number, one: string, few: string, many: string) {
 
 /* ---------- Страницы ----------
  * Главная — без хеша. Отдельные страницы: #portfolio (или #portfolio-<серия>), #price, #privacy,
+ * #book (или #book-<пакет>) — запись, #about — обо мне, #contacts — контакты,
  * #booking-<код> (статус заявки для клиента) и #admin (админка).
  * Хеш, а не путь: так страница работает на любом хостинге и кнопка «Назад» в браузере тоже. */
 type Route =
@@ -208,8 +209,11 @@ type Route =
   | { page: 'privacy' }
   | { page: 'admin' }
   | { page: 'booking'; token: string }
+  | { page: 'section'; section: Section['section']; packageId?: PackageId }
 
 function readRoute(): Route {
+  const s = window.location.hash.match(/^#(book|about|contacts)(?:-([\w-]+))?$/)
+  if (s) return { page: 'section', section: s[1] === 'book' ? 'booking' : (s[1] as 'about' | 'contacts'), packageId: s[2] }
   if (window.location.hash === '#price') return { page: 'price' }
   if (window.location.hash === '#privacy') return { page: 'privacy' }
   if (window.location.hash === '#admin' && !CLOUD) return { page: 'admin' }
@@ -222,6 +226,11 @@ function readRoute(): Route {
 
 function openPortfolio(seriesId?: string) {
   window.location.hash = seriesId ? `portfolio-${seriesId}` : 'portfolio'
+}
+
+/** Запись, «Обо мне» и контакты — отдельные страницы. */
+function openSection({ section, packageId }: Section) {
+  window.location.hash = section === 'booking' ? (packageId ? `book-${packageId}` : 'book') : section
 }
 
 function openPrice() {
@@ -370,6 +379,10 @@ export default function App() {
   const route = useRoute()
   const content = useServerContent()
   useEffect(() => {
+    if (route.page === 'section') {
+      document.title = { booking: 'Запись на съёмку', about: 'Обо мне', contacts: 'Контакты' }[route.section] + ' — VAAAAAAG'
+      return
+    }
     document.title = {
       portfolio: 'Портфолио — VAAAAAAG',
       price: 'Прайс — VAAAAAAG',
@@ -378,13 +391,15 @@ export default function App() {
       booking: 'Ваша заявка — VAAAAAAG',
       home: 'VAAAAAAG — фоткает',
     }[route.page]
-  }, [route.page])
+  }, [route])
 
   let page
   if (route.page === 'portfolio') page = <PortfolioPage key={route.series} initialSeries={route.series} />
   else if (route.page === 'price') page = <PricePage />
   else if (route.page === 'privacy') page = <PrivacyPage />
   else if (route.page === 'booking') page = <BookingStatusPage token={route.token} />
+  else if (route.page === 'section')
+    page = <SectionPage key={`${route.section}-${route.packageId ?? ''}`} section={route.section} packageId={route.packageId} />
   else if (route.page === 'admin')
     page = (
       <Suspense fallback={<div className="min-h-[100svh] bg-[#020202]" />}>
@@ -400,8 +415,6 @@ function Landing() {
   const PANELS = useMemo(() => buildPanels(packages), [packages])
   const heroList = series.length ? series : DEFAULT_SERIES
   const [progress, setProgress] = useState(0)
-  const [dialog, setDialog] = useState<DialogState>(null)
-  const closeDialog = useCallback(() => setDialog(null), [])
   const [menuOpen, setMenuOpen] = useState(false)
   const closeMenu = useCallback(() => setMenuOpen(false), [])
 
@@ -569,7 +582,7 @@ function Landing() {
       {/* ---------- Кнопка записи: всегда сверху справа ---------- */}
       <div className="fixed right-6 top-6 z-50 flex items-center gap-2 md:right-10 md:top-10 lg:right-12 lg:top-12">
         <MenuButton onClick={() => setMenuOpen(true)} />
-        <BookButton onClick={() => setDialog({ section: 'booking' })} />
+        <BookButton onClick={() => openSection({ section: 'booking' })} />
       </div>
 
       <AnimatePresence>
@@ -579,10 +592,10 @@ function Landing() {
             items={[
               { label: 'Портфолио', onClick: () => openPortfolio() },
               { label: 'Прайс', onClick: openPrice },
-              { label: 'Обо мне', onClick: () => setDialog({ section: 'about' }) },
-              { label: 'Контакты', onClick: () => setDialog({ section: 'contacts' }) },
+              { label: 'Обо мне', onClick: () => openSection({ section: 'about' }) },
+              { label: 'Контакты', onClick: () => openSection({ section: 'contacts' }) },
             ]}
-            onBook={() => setDialog({ section: 'booking' })}
+            onBook={() => openSection({ section: 'booking' })}
           />
         )}
       </AnimatePresence>
@@ -634,13 +647,11 @@ function Landing() {
                   <button
                     type="button"
                     onClick={() =>
-                      item.target === 'contacts'
-                        ? setDialog({ section: 'contacts' })
-                        : item.target === 'portfolio'
-                          ? openPortfolio()
-                          : item.target === 'price'
-                            ? openPrice()
-                            : scrollToFraction(item.target)
+                      item.target === 'portfolio'
+                        ? openPortfolio()
+                        : item.target === 'price'
+                          ? openPrice()
+                          : openSection({ section: item.target })
                     }
                     className="group relative cursor-pointer whitespace-nowrap py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/70 transition-colors duration-300 hover:text-[#E8E6DC]"
                   >
@@ -933,8 +944,7 @@ function Landing() {
 
                 <button
                   type="button"
-                  onClick={() => setDialog({ section: 'booking', packageId: selectedPackage.id })}
-                  aria-haspopup="dialog"
+                  onClick={() => openSection({ section: 'booking', packageId: selectedPackage.id })}
                   className="group inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#121212] px-6 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-[#FAF9F5] transition-colors duration-300 hover:bg-[#2a2a28]"
                 >
                   Забронировать съёмку
@@ -954,16 +964,13 @@ function Landing() {
 
       <ContactsSection />
 
-      <AnimatePresence>
-        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
-      </AnimatePresence>
     </div>
   )
 }
 
 /* ---------- Шапка и подвал отдельных страниц ---------- */
 
-function SubPageHeader({ current, onDialog }: { current?: 'portfolio' | 'price'; onDialog: (d: DialogState) => void }) {
+function SubPageHeader({ current, onDialog }: { current?: 'portfolio' | 'price' | Section['section']; onDialog: (d: Section) => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const closeMenu = useCallback(() => setMenuOpen(false), [])
   const navLink =
@@ -1011,13 +1018,23 @@ function SubPageHeader({ current, onDialog }: { current?: 'portfolio' | 'price';
             ),
           )}
           <li>
-            <button type="button" onClick={() => onDialog({ section: 'about' })} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
+            <button
+              type="button"
+              onClick={() => onDialog({ section: 'about' })}
+              aria-current={current === 'about' ? 'page' : undefined}
+              className={`${navLink} ${current === 'about' ? 'text-[#E8E6DC]' : 'text-white/70 hover:text-[#E8E6DC]'}`}
+            >
               Обо мне
               <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
             </button>
           </li>
           <li>
-            <button type="button" onClick={() => onDialog({ section: 'contacts' })} className={`${navLink} text-white/70 hover:text-[#E8E6DC]`}>
+            <button
+              type="button"
+              onClick={() => onDialog({ section: 'contacts' })}
+              aria-current={current === 'contacts' ? 'page' : undefined}
+              className={`${navLink} ${current === 'contacts' ? 'text-[#E8E6DC]' : 'text-white/70 hover:text-[#E8E6DC]'}`}
+            >
               Контакты
               <span className={`${underline} origin-right scale-x-0 group-hover:origin-left group-hover:scale-x-100`} />
             </button>
@@ -1123,14 +1140,12 @@ const FAQ: { q: string; a?: string }[] = [
 
 function PricePage() {
   const { packages } = useContent()
-  const [dialog, setDialog] = useState<DialogState>(null)
-  const closeDialog = useCallback(() => setDialog(null), [])
   const eyebrow = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40'
   const rule = <span className="mt-6 block h-px w-14 bg-white/25" aria-hidden="true" />
 
   return (
     <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
-      <SubPageHeader current="price" onDialog={setDialog} />
+      <SubPageHeader current="price" onDialog={openSection} />
 
       <main className="flex flex-col gap-24 px-6 pb-24 pt-6 md:px-10 lg:px-12 lg:pt-10">
         {/* Сводка, как в прайсе автора */}
@@ -1195,8 +1210,7 @@ function PricePage() {
                 {p.note && <p className="mt-3 text-[12px] leading-relaxed text-white/40">{p.note}</p>}
                 <button
                   type="button"
-                  onClick={() => setDialog({ section: 'booking', packageId: p.id })}
-                  aria-haspopup="dialog"
+                  onClick={() => openSection({ section: 'booking', packageId: p.id })}
                   className="group mt-6 inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/20 px-5 py-3 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212]"
                 >
                   Записаться
@@ -1284,9 +1298,6 @@ function PricePage() {
 
       <SubPageFooter />
 
-      <AnimatePresence>
-        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
-      </AnimatePresence>
     </div>
   )
 }
@@ -1307,8 +1318,6 @@ const PRIVACY_OPERATOR = {
 }
 
 function PrivacyPage() {
-  const [dialog, setDialog] = useState<DialogState>(null)
-  const closeDialog = useCallback(() => setDialog(null), [])
   const o = PRIVACY_OPERATOR
   const withServer = API !== null
   const operator = [o.name, o.status, o.email && `e-mail: ${o.email}`, `Telegram: ${o.telegram}`].filter(Boolean).join(', ')
@@ -1404,7 +1413,7 @@ function PrivacyPage() {
 
   return (
     <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
-      <SubPageHeader onDialog={setDialog} />
+      <SubPageHeader onDialog={openSection} />
       <main className="px-6 pb-24 pt-6 md:px-10 lg:px-12 lg:pt-10">
         <div className="max-w-[720px]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Документы</p>
@@ -1436,9 +1445,6 @@ function PrivacyPage() {
         </div>
       </main>
       <SubPageFooter />
-      <AnimatePresence>
-        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
-      </AnimatePresence>
     </div>
   )
 }
@@ -1475,8 +1481,6 @@ const STATUS_VIEW: Record<BookingStatus['status'], { label: string; text: string
 }
 
 function BookingStatusPage({ token }: { token: string }) {
-  const [dialog, setDialog] = useState<DialogState>(null)
-  const closeDialog = useCallback(() => setDialog(null), [])
   const [state, setState] = useState<{ status: 'loading' } | { status: 'ok'; data: BookingStatus } | { status: 'error'; message: string }>(
     { status: 'loading' },
   )
@@ -1496,7 +1500,7 @@ function BookingStatusPage({ token }: { token: string }) {
 
   return (
     <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
-      <SubPageHeader onDialog={setDialog} />
+      <SubPageHeader onDialog={openSection} />
       <main className="px-6 pb-24 pt-6 md:px-10 lg:px-12 lg:pt-10">
         <div className="max-w-[640px]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/40">Запись на съёмку</p>
@@ -1556,9 +1560,6 @@ function BookingStatusPage({ token }: { token: string }) {
         </div>
       </main>
       <SubPageFooter />
-      <AnimatePresence>
-        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
-      </AnimatePresence>
     </div>
   )
 }
@@ -1569,12 +1570,10 @@ function PortfolioPage({ initialSeries }: { initialSeries: string }) {
   const [filter, setFilter] = useState(initialSeries)
   const [lightbox, setLightbox] = useState<{ shots: Shot[]; index: number } | null>(null)
   const closeLightbox = useCallback(() => setLightbox(null), [])
-  const [dialog, setDialog] = useState<DialogState>(null)
-  const closeDialog = useCallback(() => setDialog(null), [])
 
   return (
     <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
-      <SubPageHeader current="portfolio" onDialog={setDialog} />
+      <SubPageHeader current="portfolio" onDialog={openSection} />
 
       <main>
         <PortfolioSection filter={filter} onFilter={setFilter} onOpen={(shots, index) => setLightbox({ shots, index })} />
@@ -1593,9 +1592,6 @@ function PortfolioPage({ initialSeries }: { initialSeries: string }) {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {dialog && <ContactsSection dialog {...dialog} onClose={closeDialog} />}
-      </AnimatePresence>
     </div>
   )
 }
@@ -1805,10 +1801,8 @@ const CONTACTS: { label: string; value: string; href?: string }[] = [
   { label: 'Сайт', value: SITE_HOST, href: SITE },
 ]
 
-const noop = () => {}
-
-/** Какое окно открыто и на каком разделе. */
-type DialogState = { section: 'booking' | 'about' | 'contacts'; packageId?: PackageId } | null
+/** Страница записи, «Обо мне» или контактов; для записи — выбранный пакет. */
+type Section = { section: 'booking' | 'about' | 'contacts'; packageId?: PackageId }
 
 const reveal = {
   initial: { opacity: 0, y: 40, filter: 'blur(10px)' },
@@ -1817,55 +1811,31 @@ const reveal = {
 }
 
 /**
- * Контакты. Без `dialog` — отдельный экран в конце страницы.
- * С `dialog` — тот же экран поверх страницы, открывается кнопкой «Записаться» прямо на месте.
+ * Контакты. Без `page` — отдельный экран в конце главной.
+ * С `page` — содержимое отдельной страницы: запись (#book), «Обо мне» (#about) или контакты (#contacts).
  */
 function ContactsSection({
-  dialog = false,
-  onClose,
+  page = false,
   section = 'booking',
   packageId,
 }: {
-  dialog?: boolean
-  onClose?: () => void
-  section?: 'booking' | 'about' | 'contacts'
+  page?: boolean
+  section?: Section['section']
   packageId?: PackageId
 }) {
-  const closeRef = useRef<HTMLButtonElement>(null)
-  const titleId = dialog ? 'contacts-dialog-title' : 'contacts-title'
+  const titleId = page ? 'contacts-page-title' : 'contacts-title'
 
-  useModal(dialog, onClose ?? noop, closeRef)
-
-  const dialogRef = useRef<HTMLDivElement>(null)
-  // Каждая кнопка открывает своё окно: запись, «Обо мне» или контакты — всегда с начала
-  useEffect(() => {
-    dialogRef.current?.scrollTo({ top: 0 })
-  }, [section])
-
-  const appear = dialog
+  const appear = page
     ? { initial: { opacity: 0, y: 30 }, animate: { opacity: 1, y: 0 } }
     : reveal
 
   const body = (
     <>
-      <div className="flex items-start justify-between gap-6">
-        <img src={asset('logo.svg')} alt="VAAAAAAG" width={48} height={48} className="h-12 w-12" />
-        {dialog ? (
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            className="group flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60 transition-colors duration-300 hover:text-[#E8E6DC]"
-          >
-            Закрыть
-            <X className="h-4 w-4 transition-transform duration-300 group-hover:rotate-90" strokeWidth={1.6} />
-          </button>
-        ) : null}
-      </div>
+      {!page && <img src={asset('logo.svg')} alt="VAAAAAAG" width={48} height={48} className="h-12 w-12" />}
 
-      {dialog && section === 'booking' && (
+      {page && section === 'booking' && (
         <motion.section
-          id="dlg-booking"
+          id="page-booking"
           aria-labelledby="booking-title"
           {...appear}
           transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
@@ -1874,9 +1844,9 @@ function ContactsSection({
         </motion.section>
       )}
 
-      {dialog && section === 'about' && (
+      {page && section === 'about' && (
         <motion.section
-          id="dlg-about"
+          id="page-about"
           className="grid grid-cols-1 gap-8 lg:grid-cols-12"
           aria-labelledby="about-title"
           {...appear}
@@ -1935,8 +1905,8 @@ function ContactsSection({
         </motion.section>
       )}
 
-      {(!dialog || section === 'contacts') && (
-        <div id={dialog ? 'dlg-contacts' : undefined} className="grid grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
+      {(!page || section === 'contacts') && (
+        <div id={page ? 'page-contacts' : undefined} className="grid grid-cols-1 items-end gap-12 lg:grid-cols-12 lg:gap-8">
           <motion.div
             className="lg:col-span-7"
             {...appear}
@@ -1984,14 +1954,14 @@ function ContactsSection({
         </div>
       )}
 
-      <footer className="flex flex-col gap-2 text-[11px] text-white/35 sm:flex-row sm:items-center sm:justify-between">
-        <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
-        <a href="#privacy" className="underline-offset-4 hover:text-[#E8E6DC] hover:underline">
-          Политика конфиденциальности
-        </a>
-        <span>Санкт-Петербург и область</span>
-        {!dialog && (
-          // «Наверх» внизу: правый верхний угол занят закреплённой кнопкой записи
+      {!page && (
+        <footer className="flex flex-col gap-2 text-[11px] text-white/35 sm:flex-row sm:items-center sm:justify-between">
+          <span>© {new Date().getFullYear()} VAAAAAAG — фоткает</span>
+          <a href="#privacy" className="underline-offset-4 hover:text-[#E8E6DC] hover:underline">
+            Политика конфиденциальности
+          </a>
+          <span>Санкт-Петербург и область</span>
+          {/* «Наверх» внизу: правый верхний угол занят закреплённой кнопкой записи */}
           <button
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -2000,35 +1970,30 @@ function ContactsSection({
             Наверх
             <ArrowUp className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5" strokeWidth={1.6} />
           </button>
-        )}
-      </footer>
+        </footer>
+      )}
     </>
   )
 
   const layout = 'flex min-h-[100svh] flex-col justify-between gap-16 bg-[#020202] p-6 md:p-10 lg:p-12'
 
-  if (dialog) {
-    return (
-      <motion.div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={section === 'booking' ? 'booking-title' : section === 'about' ? 'about-title' : titleId}
-        className={`fixed inset-0 z-[60] overflow-y-auto ${layout}`}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      >
-        {body}
-      </motion.div>
-    )
-  }
+  if (page) return <main className="flex flex-col gap-16 px-6 pb-24 pt-6 md:px-10 lg:px-12 lg:pt-10">{body}</main>
 
   return (
     <section id="contacts" className={`relative z-40 border-t border-white/10 ${layout}`} aria-labelledby={titleId}>
       {body}
     </section>
+  )
+}
+
+/** Отдельная страница записи, «Обо мне» или контактов — с тем же меню, что у прайса и портфолио. */
+function SectionPage({ section, packageId }: Section) {
+  return (
+    <div className="min-h-[100svh] bg-[#020202] font-sans text-white selection:bg-[#E8E6DC] selection:text-[#121212]">
+      <SubPageHeader current={section} onDialog={openSection} />
+      <ContactsSection page section={section} packageId={packageId} />
+      <SubPageFooter />
+    </div>
   )
 }
 
@@ -2648,7 +2613,6 @@ function BookButton({ onClick, placeholder = false }: { onClick?: () => void; pl
     <button
       type="button"
       onClick={onClick}
-      aria-haspopup="dialog"
       {...(placeholder ? { 'aria-hidden': true, tabIndex: -1, disabled: true } : {})}
       className={`group flex cursor-pointer items-center gap-2.5 rounded-full border border-white/25 bg-[#020202]/70 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors duration-300 hover:border-[#E8E6DC] hover:bg-[#E8E6DC] hover:text-[#121212] ${
         placeholder ? 'invisible' : ''

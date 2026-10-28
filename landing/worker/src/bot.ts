@@ -331,8 +331,10 @@ export class Bot {
     this.inPlace = false
     const text = (msg.text ?? '').trim()
     const st = await this.state(chatId)
-    // Команды и ответы на шаги записи убираем из переписки; обычный текст оставляем — вдруг это вопрос
-    if (msg.message_id && (text.startsWith('/') || st.step === 'name' || st.step === 'comment')) {
+    // Команды и ответы на шаги записи убираем из переписки; обычный текст оставляем — вдруг это вопрос.
+    // /start не трогаем: без него Telegram считает бота незапущенным и снова показывает кнопку «Старт»
+    const isStart = /^\/start(@\w+)?(\s|$)/i.test(text)
+    if (msg.message_id && !isStart && (text.startsWith('/') || st.step === 'name' || st.step === 'comment')) {
       this.incoming = { chat: chatId, id: msg.message_id }
       // id сообщений в личном чате идут подряд: окно прямо над командой — значит, оно внизу чата
       // (удалённые нами сообщения клиента номера тоже занимали)

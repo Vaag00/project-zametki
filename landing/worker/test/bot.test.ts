@@ -271,7 +271,7 @@ describe('окно бота', () => {
   const visible = (chat: number) => [...(tg.visible.get(chat) ?? [])]
 
   it('портфолио → записаться → меню: старые сообщения заменяются, переписка не растёт', async () => {
-    await bot.handleUpdate(message(CLIENT, '/start'))
+    await bot.handleUpdate(message(CLIENT, '/menu'))
     const menuId = tg.last(CLIENT).id
     expect(visible(CLIENT)).toEqual([menuId])
 
@@ -299,7 +299,7 @@ describe('окно бота', () => {
   })
 
   it('контакты с фото: меню заменяется фото, «В меню» — снова текстом', async () => {
-    await bot.handleUpdate(message(CLIENT, '/start'))
+    await bot.handleUpdate(message(CLIENT, '/menu'))
     const menuId = tg.last(CLIENT).id
     await bot.handleUpdate(press(CLIENT, 'ct', 'client', menuId))
     const photoId = tg.last(CLIENT).id
@@ -311,10 +311,16 @@ describe('окно бота', () => {
     expect(visible(CLIENT)).not.toContain(photoId)
   })
 
-  it('повторный /start обновляет меню на месте: чат не пустеет и не мигает', async () => {
-    await bot.handleUpdate(message(CLIENT, '/start'))
+  it('/start остаётся в переписке — иначе Telegram снова показывает кнопку «Старт»', async () => {
+    const start = message(CLIENT, '/start').message
+    await bot.handleUpdate({ message: start })
+    expect(visible(CLIENT)).toContain(start.message_id)
+  })
+
+  it('повторная команда обновляет меню на месте: чат не пустеет и не мигает', async () => {
+    await bot.handleUpdate(message(CLIENT, '/menu'))
     const menuId = tg.last(CLIENT).id
-    const cmd = message(CLIENT, '/start').message
+    const cmd = message(CLIENT, '/menu').message
     expect(cmd.message_id).toBe(menuId + 1)
     await bot.handleUpdate({ message: cmd })
     expect(visible(CLIENT)).toEqual([menuId]) // то же сообщение, команда убрана
@@ -323,7 +329,7 @@ describe('окно бота', () => {
   })
 
   it('новое окно приходит раньше, чем удаляется старое', async () => {
-    await bot.handleUpdate(message(CLIENT, '/start'))
+    await bot.handleUpdate(message(CLIENT, '/menu'))
     const menuId = tg.last(CLIENT).id
     tg.nextId += 5 // между меню и командой есть другие сообщения
     await bot.handleUpdate(message(CLIENT, '/price'))

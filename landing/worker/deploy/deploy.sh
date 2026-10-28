@@ -19,7 +19,15 @@ fi
 echo "Бот: @$bot_username"
 
 # ---- База D1 ----
-db_id() { npx wrangler d1 list --json 2>/dev/null | field "l=>l.find(d=>d.name==='$DATABASE')?.uuid"; }
+db_id() {
+  local out
+  if ! out=$(npx wrangler d1 list --json 2>&1); then
+    echo "$out" >&2
+    echo "::error::Cloudflare не дал доступ к базам D1. Проверьте, что у токена есть права D1: Edit и Workers Scripts: Edit." >&2
+    return 1
+  fi
+  echo "$out" | field "l=>l.find(d=>d.name==='$DATABASE')?.uuid"
+}
 id=$(db_id)
 if [ -z "$id" ]; then
   echo "Создаю базу D1…"

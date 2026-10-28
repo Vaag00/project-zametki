@@ -91,6 +91,8 @@ function buildPanels(packages: Package[]): Record<1 | 2, Panel> {
 const ABOUT = {
   title: 'Портретный фотограф',
   titleAccent: 'в Санкт-Петербурге',
+  /** Портрет автора — файл в public/. */
+  photo: 'about.jpg',
   /** Биография: от прошлого к планам. */
   bio: [
     'В 2025 году я начал свой путь в мире фотографии, записавшись на курсы по основам фотосъемки.',
@@ -1887,6 +1889,14 @@ function ContactsSection({
                 ))}
               </em>
             </h2>
+            <img
+              src={asset(ABOUT.photo)}
+              alt="Вааг, фотограф"
+              width={900}
+              height={1200}
+              loading="lazy"
+              className="mt-8 aspect-[3/4] w-full max-w-[360px] object-cover"
+            />
           </div>
           <div className="flex max-w-[600px] flex-col gap-5 text-[15px] leading-[1.7] text-white/70 lg:col-span-6 lg:col-start-7 lg:pt-10">
             {ABOUT.paragraphs.map((text) => (
